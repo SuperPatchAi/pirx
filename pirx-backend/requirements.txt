@@ -29,6 +29,16 @@ joblib
 fitparse
 gpxpy
 
+# === AI / LLM ===
+langchain
+langchain-openai
+langchain-anthropic
+langgraph
+langgraph-checkpoint-postgres
+openai
+tiktoken
+shap
+
 # === Monitoring ===
 sentry-sdk[fastapi]
 

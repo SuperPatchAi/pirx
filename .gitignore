@@ -17,12 +17,15 @@ dist/
 build/
 .eggs/
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
 pirx-frontend/.env.local
 pirx-backend/.env
+Supabase.txt
+*.secret
+*credentials*
 
 # IDE
 .vscode/

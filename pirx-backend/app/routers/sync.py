@@ -258,13 +258,32 @@ async def connect_terra_widget(
     return result
 
 
+TERRA_PROVIDERS = {"garmin", "apple_health", "fitbit", "suunto", "coros", "whoop", "oura", "polar"}
+
+
 @router.post("/connect/{provider}")
 async def connect_wearable_generic(
     provider: str, user: dict = Depends(get_current_user)
 ):
-    """Generic wearable connection for Terra-based providers."""
-    # TODO: Implement per-provider connection logic
-    return {"message": "Not implemented", "provider": provider}
+    """Connect a wearable via Terra widget session."""
+    if provider == "strava":
+        raise HTTPException(status_code=400, detail="Use /sync/connect/strava for Strava connections")
+
+    if provider not in TERRA_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported provider '{provider}'. Supported: {', '.join(sorted(TERRA_PROVIDERS))}",
+        )
+
+    try:
+        result = await terra_service.generate_widget_session(
+            user_id=user["user_id"],
+            redirect_url=f"{settings.api_url or 'http://localhost:3000'}/settings?connected={provider}",
+            failure_redirect_url=f"{settings.api_url or 'http://localhost:3000'}/settings?error={provider}",
+        )
+        return {"provider": provider, "widget_url": result.get("url"), "status": "widget_session_created"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to create {provider} connection session: {e}")
 
 
 @router.post("/trigger")

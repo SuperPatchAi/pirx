@@ -155,6 +155,20 @@ export default function ChatPage() {
           }),
         });
 
+        if (!response.ok) {
+          const errMsg =
+            response.status === 401
+              ? "Session expired. Please log out and log back in."
+              : `Server error (${response.status}). Please try again later.`;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: errMsg } : m
+            )
+          );
+          setIsLoading(false);
+          return;
+        }
+
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let fullText = "";

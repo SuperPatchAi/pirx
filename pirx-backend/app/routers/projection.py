@@ -120,6 +120,124 @@ EVENT_DISPLAY_NAMES = {
     "21097": "Half Marathon", "42195": "Marathon",
 }
 
+DRIVER_KEYS = [
+    "aerobic_base",
+    "threshold_density",
+    "speed_exposure",
+    "running_economy",
+    "load_consistency",
+]
+
+DRIVER_DISPLAY_NAMES = {
+    "aerobic_base": "Aerobic Base",
+    "threshold_density": "Threshold Density",
+    "speed_exposure": "Speed Exposure",
+    "running_economy": "Running Economy",
+    "load_consistency": "Load Consistency",
+}
+
+MOCK_FEATURES = {
+    "rolling_distance_7d": 35000, "rolling_distance_21d": 90000, "rolling_distance_42d": 170000,
+    "z1_pct": 0.35, "z2_pct": 0.32, "z4_pct": 0.14, "z5_pct": 0.06,
+    "threshold_density_min_week": 22, "speed_exposure_min_week": 8,
+    "hr_drift_sustained": 0.035, "late_session_pace_decay": 0.025,
+    "matched_hr_band_pace": 265,
+    "weekly_load_stddev": 2500, "block_variance": 2800,
+    "session_density_stability": 0.85, "acwr_4w": 1.1,
+}
+
+
+def _load_user_features(user_id: str) -> dict:
+    """Load computed features for a user, falling back to mock data."""
+    try:
+        from app.models.activities import NormalizedActivity
+        from app.services.feature_service import FeatureService
+
+        db = SupabaseService()
+        activities_raw = db.get_recent_activities(user_id, days=90)
+        if activities_raw:
+            activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
+            features = FeatureService.compute_all_features(activities, user_id=user_id)
+            return {k: (v if v is not None else MOCK_FEATURES.get(k, 0)) for k, v in features.items()}
+    except Exception:
+        logger.exception("Failed to load user features")
+    return MOCK_FEATURES
+
+
+def _build_projection_narrative(driver_explanations: list[dict]) -> str:
+    """Combine per-driver narratives into a 2-3 sentence top-level narrative."""
+    sorted_drivers = sorted(driver_explanations, key=lambda d: abs(d["contribution_seconds"]), reverse=True)
+    top = sorted_drivers[:2]
+
+    parts = []
+    for d in top:
+        sign = "-" if d["contribution_seconds"] < 0 else "+"
+        parts.append(f"{d['display_name']} (contributing {sign}{abs(d['contribution_seconds'])}s)")
+
+    sentence = "Your projection is primarily driven by " + " and ".join(parts) + "."
+
+    if top:
+        best = top[0]
+        sentence += f" {best['narrative']}"
+
+    return sentence
+
+
+@router.get("/explain")
+async def explain_projection(
+    event: str = Query(default="5000"),
+    user: dict = Depends(get_current_user),
+):
+    """Get SHAP-based explanation for the full projection across all drivers."""
+    from app.ml.shap_explainer import SHAPExplainer
+
+    features = _load_user_features(user["user_id"])
+
+    try:
+        db = SupabaseService()
+        driver_rows = db.get_latest_drivers(user["user_id"])
+    except Exception:
+        logger.exception("Failed to query driver_state for explain")
+        driver_rows = []
+
+    driver_contributions: dict[str, float] = {}
+    if driver_rows:
+        row = driver_rows[0]
+        for key in DRIVER_KEYS:
+            driver_contributions[key] = row.get(f"{key}_seconds", 0.0)
+
+    driver_explanations = []
+    confidences = []
+
+    for key in DRIVER_KEYS:
+        explanation = SHAPExplainer.explain_driver(key, features)
+        contrib = driver_contributions.get(key, 0.0)
+        driver_explanations.append({
+            "driver_name": key,
+            "display_name": DRIVER_DISPLAY_NAMES[key],
+            "contribution_seconds": contrib,
+            "overall_direction": explanation.overall_direction,
+            "narrative": explanation.narrative,
+            "top_factors": explanation.top_features,
+        })
+        confidences.append(explanation.confidence)
+
+    narrative = _build_projection_narrative(driver_explanations)
+
+    if "high" in confidences:
+        overall_confidence = "high"
+    elif confidences.count("medium") >= 3:
+        overall_confidence = "medium"
+    else:
+        overall_confidence = "low"
+
+    return {
+        "event": event,
+        "narrative": narrative,
+        "drivers": driver_explanations,
+        "confidence": overall_confidence,
+    }
+
 
 @router.get("/all")
 async def get_all_projections(user: dict = Depends(get_current_user)):

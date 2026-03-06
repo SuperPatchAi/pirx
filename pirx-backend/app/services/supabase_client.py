@@ -278,7 +278,7 @@ class SupabaseService:
     def get_onboarded_users(self) -> list[dict]:
         result = (
             self.client.table("users")
-            .select("user_id")
+            .select("user_id, primary_event, baseline_race_date")
             .eq("onboarding_completed", True)
             .execute()
         )

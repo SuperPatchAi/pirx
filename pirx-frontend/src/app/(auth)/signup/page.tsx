@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -36,6 +37,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const supabase = createClient();
 
@@ -146,7 +148,30 @@ export default function SignupPage() {
               </p>
             )}
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <div className="flex items-start space-x-2">
+            <Checkbox
+              id="terms"
+              checked={agreedToTerms}
+              onCheckedChange={(checked) =>
+                setAgreedToTerms(checked === true)
+              }
+            />
+            <Label htmlFor="terms" className="text-xs leading-snug text-muted-foreground">
+              I agree to the{" "}
+              <Link href="/privacy" className="text-primary underline-offset-4 hover:underline">
+                Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link href="/terms" className="text-primary underline-offset-4 hover:underline">
+                Terms of Service
+              </Link>
+            </Label>
+          </div>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading || !agreedToTerms}
+          >
             {loading ? "Creating account…" : "Create Account"}
           </Button>
         </form>

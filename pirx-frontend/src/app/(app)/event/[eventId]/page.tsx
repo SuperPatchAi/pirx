@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { motion } from "framer-motion";
 import {
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Timer,
   TrendingDown,
   TrendingUp,
@@ -15,7 +17,9 @@ import {
   Target,
   BarChart3,
   Loader2,
+  Share2,
 } from "lucide-react";
+import { ShareModal, type CardData } from "@/components/social/share-modal";
 import Link from "next/link";
 import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 
@@ -36,6 +40,8 @@ const EVENT_NAMES: Record<string, string> = {
   "3000": "3K",
   "5000": "5K",
   "10000": "10K",
+  "21097": "Half Marathon",
+  "42195": "Marathon",
 };
 
 const EMPTY_DRIVERS: { name: string; display: string; contribution: number; trend: string }[] = [];
@@ -72,6 +78,24 @@ export default function EventPage() {
   const [driversData, setDriversData] = useState<
     { name: string; display: string; contribution: number; trend: string }[] | null
   >(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [cardData, setCardData] = useState<CardData | null>(null);
+  const [cohortPercentile, setCohortPercentile] = useState<number | null>(null);
+  const [showExplainer, setShowExplainer] = useState(false);
+  const [explainerData, setExplainerData] = useState<{
+    event: string;
+    narrative: string;
+    drivers: Array<{
+      driver_name: string;
+      display_name: string;
+      contribution_seconds: number;
+      overall_direction: string;
+      narrative: string;
+      top_factors: Array<{ name: string; display_name: string; contribution: number; direction: string }>;
+    }>;
+    confidence: string;
+  } | null>(null);
+  const [explainerLoading, setExplainerLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -206,6 +230,46 @@ export default function EventPage() {
     load();
   }, [eventId]);
 
+  async function toggleExplainer() {
+    if (showExplainer) {
+      setShowExplainer(false);
+      return;
+    }
+    setShowExplainer(true);
+    if (explainerData) return;
+
+    setExplainerLoading(true);
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      const result = await apiFetch(`/projection/explain?event=${eventId}`);
+      setExplainerData(result);
+    } catch {
+      setExplainerData(null);
+    } finally {
+      setExplainerLoading(false);
+    }
+  }
+
+  const handleShare = useCallback(async () => {
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      const [cardRes, cohortRes] = await Promise.allSettled([
+        apiFetch(`/social/card-data?event=${eventId}`),
+        apiFetch(`/social/cohort?event=${eventId}`),
+      ]);
+      if (cardRes.status === "fulfilled") {
+        setCardData(cardRes.value as CardData);
+      }
+      if (cohortRes.status === "fulfilled") {
+        const c = cohortRes.value as { percentile?: number | null };
+        setCohortPercentile(c.percentile ?? null);
+      }
+      setShareOpen(true);
+    } catch {
+      // Failed to load share data
+    }
+  }, [eventId]);
+
   const data = {
     projected: projection?.projected ?? "—",
     range: projection?.range ?? "—",
@@ -251,10 +315,13 @@ export default function EventPage() {
         <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => router.back()}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">{eventName}</h1>
           <p className="text-sm text-muted-foreground">Event Projection</p>
         </div>
+        <Button variant="ghost" size="icon" onClick={handleShare} aria-label="Share projection">
+          <Share2 className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Projection Hero */}
@@ -289,6 +356,63 @@ export default function EventPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Projection Explainer */}
+      <div className="space-y-2">
+        <button
+          onClick={toggleExplainer}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showExplainer ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+          Why this projection?
+        </button>
+
+        {showExplainer && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              {explainerLoading ? (
+                <div className="flex items-center gap-2 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Analyzing projection...</span>
+                </div>
+              ) : explainerData ? (
+                <>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {explainerData.narrative}
+                  </p>
+                  <Separator />
+                  <div className="space-y-3">
+                    {explainerData.drivers.map((d) => (
+                      <div key={d.driver_name} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{d.display_name}</span>
+                          <span className={`text-sm font-medium tabular-nums ${d.contribution_seconds < 0 ? "text-green-500" : d.contribution_seconds > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                            {d.contribution_seconds < 0 ? "" : "+"}{d.contribution_seconds}s
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{d.narrative}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-1">
+                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      Confidence: {explainerData.confidence}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Unable to load explanation. Try again later.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Projection History Chart Placeholder */}
       <Card>
@@ -379,6 +503,12 @@ export default function EventPage() {
           </Card>
         ))}
       </div>
+      <ShareModal
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        cardData={cardData}
+        percentile={cohortPercentile}
+      />
     </motion.div>
   );
 }

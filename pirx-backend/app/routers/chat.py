@@ -1,4 +1,5 @@
 """PIRX Chat API — streaming conversation with the LangGraph agent."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -6,6 +7,8 @@ from typing import Optional
 from datetime import datetime, timezone
 import json
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from app.dependencies import get_current_user
 from app.services.supabase_client import SupabaseService
@@ -94,7 +97,8 @@ async def chat(
             thread_id=thread_id,
             tool_calls=tool_calls,
         )
-    except Exception:
+    except Exception as e:
+        logger.exception("Chat agent error: %s", e)
         fallback = (
             "I am currently unable to process your request. "
             "This could be because the AI service is not configured. "
@@ -158,7 +162,8 @@ async def chat_stream(
 
             yield f"data: {json.dumps({'done': True, 'thread_id': thread_id})}\n\n"
 
-        except Exception:
+        except Exception as e:
+            logger.exception("Chat stream error: %s", e)
             yield f"data: {json.dumps({'error': 'An error occurred', 'thread_id': thread_id})}\n\n"
 
     return StreamingResponse(

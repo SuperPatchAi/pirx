@@ -3,6 +3,7 @@
 import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
 import { ChatFAB } from "@/components/layout/chat-fab";
 import { TourProvider } from "@/components/tour/tour-provider";
+import { ConsentBanner } from "@/components/layout/consent-banner";
 import { useNotifications } from "@/hooks/use-notifications";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <ChatFAB />
       <BottomTabBar />
       <TourProvider />
+      <ConsentBanner />
     </div>
   );
 }

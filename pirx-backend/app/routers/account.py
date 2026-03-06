@@ -100,6 +100,7 @@ async def delete_user_data(user: dict = Depends(get_current_user)):
     tables = [
         "chat_messages",
         "chat_threads",
+        "push_subscriptions",
         "notification_log",
         "user_embeddings",
         "physiology",

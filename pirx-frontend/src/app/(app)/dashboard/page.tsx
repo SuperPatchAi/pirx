@@ -10,7 +10,9 @@ import { useProjectionRealtime } from "@/hooks/use-projection-realtime";
 import { useProjectionStore } from "@/stores/projection-store";
 import { useTourStore } from "@/stores/tour-store";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
+import { ShareModal, type CardData } from "@/components/social/share-modal";
+import { Loader2, Share2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const EMPTY_PROJECTION = {
   projected_time: "—",
@@ -53,6 +55,9 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<{ sessions: number | null; distanceKm: number | null; acwr: number | null }>({ sessions: null, distanceKm: null, acwr: null });
   const [syncStatus, setSyncStatus] = useState<{ lastSync: string | null; syncing: boolean }>({ lastSync: null, syncing: false });
   const [selectedEvent, setSelectedEvent] = useState("5000");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [cardData, setCardData] = useState<CardData | null>(null);
+  const [cohortPercentile, setCohortPercentile] = useState<number | null>(null);
 
   const { user } = useAuth();
   useProjectionRealtime(user?.id ?? null);
@@ -185,6 +190,26 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const handleShare = useCallback(async () => {
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      const [cardRes, cohortRes] = await Promise.allSettled([
+        apiFetch(`/social/card-data?event=${selectedEvent}`),
+        apiFetch(`/social/cohort?event=${selectedEvent}`),
+      ]);
+      if (cardRes.status === "fulfilled") {
+        setCardData(cardRes.value as CardData);
+      }
+      if (cohortRes.status === "fulfilled") {
+        const c = cohortRes.value as { percentile?: number | null };
+        setCohortPercentile(c.percentile ?? null);
+      }
+      setShareOpen(true);
+    } catch {
+      // Failed to load share data
+    }
+  }, [selectedEvent]);
+
   const projTime = projection
     ? (projection.projected_time_display as string) ?? formatTime(projection.projected_time_seconds as number)
     : EMPTY_PROJECTION.projected_time;
@@ -205,7 +230,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <SyncBanner lastSync={syncStatus.lastSync} syncing={syncStatus.syncing} onSyncNow={handleSyncNow} />
-      <div data-tour="projection-tile">
+      <div data-tour="projection-tile" className="relative">
         <ProjectionTile
           event={selectedEvent}
           projectedTime={projTime}
@@ -213,6 +238,15 @@ export default function DashboardPage() {
           improvementSeconds={improvement}
           twentyOneDayChange={change21d}
         />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-3 right-3"
+          onClick={handleShare}
+          aria-label="Share projection"
+        >
+          <Share2 className="h-4 w-4" />
+        </Button>
       </div>
       <div data-tour="event-swiper">
         <EventSwiper
@@ -229,6 +263,12 @@ export default function DashboardPage() {
         sessionsPerWeek={metrics.sessions}
         distanceKmPerWeek={metrics.distanceKm}
         acwr={metrics.acwr}
+      />
+      <ShareModal
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        cardData={cardData}
+        percentile={cohortPercentile}
       />
     </div>
   );

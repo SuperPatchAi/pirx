@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/hooks/use-notifications";
 import { useTourStore } from "@/stores/tour-store";
 import { createClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api";
@@ -41,6 +42,8 @@ import {
   Loader2,
   Plus,
   FlaskConical,
+  Shield,
+  Users,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -57,7 +60,10 @@ const PROVIDER_META: Record<string, { name: string; icon: typeof Activity }> = {
   oura: { name: "Oura", icon: Activity },
 };
 
-const ALL_PROVIDERS = ["strava", "garmin", "apple_health", "fitbit"];
+const ALL_PROVIDERS = [
+  "strava", "garmin", "apple_health", "fitbit",
+  "coros", "whoop", "oura", "polar", "suunto",
+];
 
 const EVENT_OPTIONS = [
   { id: "1500", name: "1500m" },
@@ -129,9 +135,11 @@ function formatSyncTime(iso: string | null): string {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { permission, supported, subscribed, requestPermission, subscribeToPush, unsubscribeFromPush } = useNotifications();
   const supabase = createClient();
   const router = useRouter();
   const { resetCompleted } = useTourStore();
+  const [pushLoading, setPushLoading] = useState(false);
 
   const [connections, setConnections] = useState<WearableConnection[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
@@ -149,6 +157,13 @@ export default function SettingsPage() {
   const [newAdjunctName, setNewAdjunctName] = useState("");
   const [addAdjunctLoading, setAddAdjunctLoading] = useState(false);
   const [deletingAdjunctId, setDeletingAdjunctId] = useState<string | null>(null);
+
+  const [isCoach, setIsCoach] = useState(false);
+  const [myCoaches, setMyCoaches] = useState<
+    { coach_id: string; display_name: string; organization?: string; status: string; invited_at?: string }[]
+  >([]);
+  const [coachAccessLoading, setCoachAccessLoading] = useState(true);
+  const [coachActionLoading, setCoachActionLoading] = useState<string | null>(null);
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -197,12 +212,32 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchCoachAccess = useCallback(async () => {
+    try {
+      const [profileRes, coachesRes] = await Promise.allSettled([
+        apiFetch("/coach/profile"),
+        apiFetch("/coach/my-coaches"),
+      ]);
+      if (profileRes.status === "fulfilled") {
+        setIsCoach(profileRes.value.is_coach === true);
+      }
+      if (coachesRes.status === "fulfilled") {
+        setMyCoaches(coachesRes.value.coaches ?? []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCoachAccessLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchConnections();
     fetchBaseline();
     fetchPreferences();
     fetchAdjuncts();
-  }, [fetchConnections, fetchBaseline, fetchPreferences, fetchAdjuncts]);
+    fetchCoachAccess();
+  }, [fetchConnections, fetchBaseline, fetchPreferences, fetchAdjuncts, fetchCoachAccess]);
 
   const mergedConnections = ALL_PROVIDERS.map((provider) => {
     const live = connections.find((c) => c.provider === provider);
@@ -213,7 +248,10 @@ export default function SettingsPage() {
     };
   });
 
+  const [connecting, setConnecting] = useState<string | null>(null);
+
   const handleConnect = async (provider: string) => {
+    setConnecting(provider);
     if (provider === "strava") {
       try {
         const redirectUri = `${window.location.origin}/settings/strava-callback`;
@@ -222,20 +260,21 @@ export default function SettingsPage() {
         );
         if (data.authorization_url) {
           window.location.href = data.authorization_url;
+          return;
         }
       } catch { toast.error("Failed to connect Strava"); }
     } else {
       try {
-        const data = await apiFetch("/sync/connect/terra/widget", {
+        const data = await apiFetch(`/sync/connect/${provider}`, {
           method: "POST",
-          body: JSON.stringify({
-            redirect_url: `${window.location.origin}/settings`,
-            failure_redirect_url: `${window.location.origin}/settings`,
-          }),
         });
-        if (data.url) window.location.href = data.url;
-      } catch { toast.error("Failed to connect provider"); }
+        if (data.widget_url) {
+          window.open(data.widget_url, "_blank");
+          toast.success(`Opening ${PROVIDER_META[provider]?.name ?? provider} connection...`);
+        }
+      } catch { toast.error(`Failed to connect ${PROVIDER_META[provider]?.name ?? provider}`); }
     }
+    setConnecting(null);
   };
 
   const handleDisconnect = async (provider: string) => {
@@ -315,6 +354,42 @@ export default function SettingsPage() {
     setDeletingAdjunctId(null);
   };
 
+  const handleAcceptInvite = async (coachId: string) => {
+    setCoachActionLoading(coachId);
+    try {
+      await apiFetch(`/coach/accept-invite/${coachId}`, { method: "POST" });
+      toast.success("Invite accepted");
+      await fetchCoachAccess();
+    } catch {
+      toast.error("Failed to accept invite");
+    }
+    setCoachActionLoading(null);
+  };
+
+  const handleDeclineInvite = async (coachId: string) => {
+    setCoachActionLoading(coachId);
+    try {
+      await apiFetch(`/coach/decline-invite/${coachId}`, { method: "POST" });
+      toast.success("Invite declined");
+      await fetchCoachAccess();
+    } catch {
+      toast.error("Failed to decline invite");
+    }
+    setCoachActionLoading(null);
+  };
+
+  const handleRevokeCoach = async (coachId: string) => {
+    setCoachActionLoading(coachId);
+    try {
+      await apiFetch(`/coach/revoke-coach/${coachId}`, { method: "POST" });
+      toast.success("Coach access revoked");
+      await fetchCoachAccess();
+    } catch {
+      toast.error("Failed to revoke access");
+    }
+    setCoachActionLoading(null);
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
@@ -376,8 +451,12 @@ export default function SettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      disabled={connecting === w.provider}
                       onClick={() => handleConnect(w.provider)}
                     >
+                      {connecting === w.provider ? (
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      ) : null}
                       Connect
                     </Button>
                   )}
@@ -481,6 +560,95 @@ export default function SettingsPage() {
                 />
               </div>
             ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Push Notifications */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <Bell className="h-4 w-4" />
+          Push Notifications
+        </h2>
+        <Card>
+          <CardContent className="p-4">
+            {!supported ? (
+              <p className="text-sm text-muted-foreground">
+                Push notifications are not supported in this browser.
+              </p>
+            ) : subscribed ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-500" />
+                  <span className="text-sm">Push notifications enabled</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pushLoading}
+                  onClick={async () => {
+                    setPushLoading(true);
+                    try {
+                      const { data } = await supabase.auth.getSession();
+                      const token = data?.session?.access_token;
+                      if (token) await unsubscribeFromPush(token);
+                    } catch { toast.error("Failed to unsubscribe"); }
+                    setPushLoading(false);
+                  }}
+                >
+                  {pushLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Unsubscribe"}
+                </Button>
+              </div>
+            ) : permission !== "granted" ? (
+              <Button
+                variant="outline"
+                className="w-full"
+                size="sm"
+                disabled={pushLoading}
+                onClick={async () => {
+                  setPushLoading(true);
+                  try {
+                    await requestPermission();
+                    const { data } = await supabase.auth.getSession();
+                    const token = data?.session?.access_token;
+                    if (token) await subscribeToPush(token);
+                  } catch { toast.error("Failed to enable push notifications"); }
+                  setPushLoading(false);
+                }}
+              >
+                {pushLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Bell className="mr-2 h-4 w-4" />
+                )}
+                Enable Push Notifications
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full"
+                size="sm"
+                disabled={pushLoading}
+                onClick={async () => {
+                  setPushLoading(true);
+                  try {
+                    const { data } = await supabase.auth.getSession();
+                    const token = data?.session?.access_token;
+                    if (token) await subscribeToPush(token);
+                  } catch { toast.error("Failed to subscribe"); }
+                  setPushLoading(false);
+                }}
+              >
+                {pushLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Bell className="mr-2 h-4 w-4" />
+                )}
+                Subscribe to Push
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -686,6 +854,108 @@ export default function SettingsPage() {
                   >
                     <Plus className="mr-2 h-4 w-4" /> Add Adjunct
                   </Button>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Coach Access */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          Coach Access
+        </h2>
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            {coachAccessLoading ? (
+              <div className="flex justify-center py-2">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant={isCoach ? "outline" : "secondary"}
+                  size="sm"
+                  className="w-full"
+                  onClick={() => router.push("/coach")}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  {isCoach ? "Open Coach Dashboard" : "Become a Coach"}
+                </Button>
+                {myCoaches.length > 0 && <Separator />}
+                {myCoaches.filter((c) => c.status === "pending").map((c) => (
+                  <div
+                    key={c.coach_id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{c.display_name}</p>
+                      {c.organization && (
+                        <p className="text-xs text-muted-foreground">{c.organization}</p>
+                      )}
+                      <Badge variant="secondary" className="mt-1 text-[10px]">
+                        Pending Invite
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={coachActionLoading === c.coach_id}
+                        onClick={() => handleAcceptInvite(c.coach_id)}
+                      >
+                        {coachActionLoading === c.coach_id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={coachActionLoading === c.coach_id}
+                        onClick={() => handleDeclineInvite(c.coach_id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {myCoaches.filter((c) => c.status === "active").map((c) => (
+                  <div
+                    key={c.coach_id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{c.display_name}</p>
+                      {c.organization && (
+                        <p className="text-xs text-muted-foreground">{c.organization}</p>
+                      )}
+                      <Badge variant="default" className="mt-1 text-[10px]">
+                        Active
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={coachActionLoading === c.coach_id}
+                      onClick={() => handleRevokeCoach(c.coach_id)}
+                    >
+                      {coachActionLoading === c.coach_id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Revoke"
+                      )}
+                    </Button>
+                  </div>
+                ))}
+                {!isCoach && myCoaches.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No coach connections
+                  </p>
                 )}
               </>
             )}

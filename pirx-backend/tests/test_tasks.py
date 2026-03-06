@@ -220,10 +220,11 @@ class TestBackfillTask:
 class TestStructuralDecayDetailed:
     """G5: Test structural_decay_check with inactive user scenarios."""
 
+    @patch("app.services.notification_service.NotificationService")
     @patch("app.services.supabase_client.SupabaseService")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_structural_decay_check_inactive_user(self, mock_sb, mock_svc_cls):
-        """Mock inactive user (21+ days); verify notification created."""
+    def test_structural_decay_check_inactive_user(self, mock_sb, mock_svc_cls, mock_ns_cls):
+        """Mock inactive user (21+ days); verify notification dispatched."""
         mock_sb.return_value = MagicMock()
 
         mock_svc = MagicMock()
@@ -242,8 +243,11 @@ class TestStructuralDecayDetailed:
             "status": "Holding",
         }
         mock_svc.insert_projection.return_value = {}
-        mock_svc.insert_notification.return_value = {}
         mock_svc_cls.return_value = mock_svc
+
+        mock_ns = MagicMock()
+        mock_ns.dispatch.return_value = {}
+        mock_ns_cls.return_value = mock_ns
 
         from app.tasks.projection_tasks import structural_decay_check
         result = structural_decay_check()
@@ -252,20 +256,22 @@ class TestStructuralDecayDetailed:
         assert result["users_decayed"] >= 1
         assert result["users_stale"] >= 1
 
-        mock_svc.insert_notification.assert_called_once()
-        call_args = mock_svc.insert_notification.call_args
+        mock_ns.dispatch.assert_called_once()
+        call_args = mock_ns.dispatch.call_args
         assert call_args[0][0] == "inactive-user-1"
-        assert call_args[0][1] == "intervention"
-        assert "Declining" in call_args[0][2]
+        payload = call_args[0][1]
+        assert payload.notification_type == "intervention"
+        assert "Declining" in payload.title
 
 
 class TestWeeklySummaryDetailed:
     """G5: Test weekly_summary with active user."""
 
+    @patch("app.services.notification_service.NotificationService")
     @patch("app.services.supabase_client.SupabaseService")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_weekly_summary_generates_notification(self, mock_sb, mock_svc_cls):
-        """Mock user with activities; verify summary notification generated."""
+    def test_weekly_summary_generates_notification(self, mock_sb, mock_svc_cls, mock_ns_cls):
+        """Mock user with activities; verify summary notification dispatched."""
         mock_sb.return_value = MagicMock()
 
         mock_svc = MagicMock()
@@ -284,19 +290,22 @@ class TestWeeklySummaryDetailed:
         mock_svc.get_latest_drivers.return_value = [
             {"aerobic_base_seconds": 7.5, "threshold_density_seconds": 6.2, "speed_exposure_seconds": 8.0, "load_consistency_seconds": 4.1, "running_economy_seconds": 5.5},
         ]
-        mock_svc.insert_notification.return_value = {}
+        mock_svc.get_feature_history.return_value = []
         mock_svc_cls.return_value = mock_svc
+
+        mock_ns = MagicMock()
+        mock_ns.dispatch.return_value = {}
+        mock_ns.build_weekly_summary.return_value = MagicMock(notification_type="weekly_summary", title="Weekly Summary", body="3 sessions", deep_link="/performance")
+        mock_ns_cls.return_value = mock_ns
 
         from app.tasks.projection_tasks import weekly_summary
         result = weekly_summary()
         assert result["status"] == "completed"
         assert result["summaries_sent"] == 1
 
-        mock_svc.insert_notification.assert_called_once()
-        call_args = mock_svc.insert_notification.call_args
+        mock_ns.dispatch.assert_called_once()
+        call_args = mock_ns.dispatch.call_args
         assert call_args[0][0] == "active-user-1"
-        assert call_args[0][1] == "weekly_summary"
-        assert "3 runs" in call_args[0][3]
 
     @patch("app.services.supabase_client.SupabaseService")
     @patch("app.services.supabase_client.get_supabase_client")

@@ -15,6 +15,8 @@ celery_app.config_from_object(
         "task_routes": {
             "app.tasks.projection_tasks.*": {"queue": "projection"},
             "app.tasks.feature_engineering.*": {"queue": "projection"},
+            "app.tasks.accuracy_tasks.*": {"queue": "projection"},
+            "app.tasks.social_tasks.*": {"queue": "projection"},
             "app.tasks.sync_tasks.*": {"queue": "sync"},
         },
         "task_time_limit": 300,
@@ -31,6 +33,18 @@ celery_app.config_from_object(
             "monthly-bias-correction": {
                 "task": "app.tasks.projection_tasks.bias_correction",
                 "schedule": crontab(hour=4, minute=0, day_of_month=1),
+            },
+            "weekly-model-accuracy": {
+                "task": "app.tasks.accuracy_tasks.compute_model_accuracy",
+                "schedule": crontab(hour=5, minute=0, day_of_week=2),
+            },
+            "race-approaching-daily": {
+                "task": "app.tasks.projection_tasks.check_race_approaching",
+                "schedule": crontab(hour=9, minute=0),
+            },
+            "weekly-cohort-benchmarks": {
+                "task": "app.tasks.social_tasks.compute_cohort_benchmarks",
+                "schedule": crontab(hour=6, minute=0, day_of_week=3),
             },
         },
     }

@@ -235,11 +235,20 @@ export default function LoginPage() {
           </Button>
         </div>
       </CardContent>
-      <CardFooter className="justify-center">
+      <CardFooter className="flex-col gap-2">
         <p className="text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
           <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
             Sign Up
+          </Link>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          {" · "}
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Terms of Service
           </Link>
         </p>
       </CardFooter>

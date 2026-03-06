@@ -33,6 +33,8 @@ import {
   Activity,
   BookOpen,
   Shield,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 import { apiFetch } from "@/lib/api";
@@ -836,6 +838,191 @@ function HonestStateTab({ data, loading }: { data: HonestStateData | null; loadi
 }
 
 /* ────────────────────────────────────────────────────────────
+   Accuracy tab (5K)
+   ──────────────────────────────────────────────────────────── */
+
+const EVENT_LABELS: Record<string, string> = {
+  "1500": "1500m",
+  "3000": "3K",
+  "5000": "5K",
+  "10000": "10K",
+  "21097": "Half Marathon",
+  "42195": "Marathon",
+};
+
+interface GlobalAccuracy {
+  mae_seconds: number | null;
+  bias_seconds: number | null;
+  bland_altman_lower: number | null;
+  bland_altman_upper: number | null;
+  sample_size: number;
+  meets_benchmark: boolean;
+  benchmark_target: number;
+  metric_date?: string;
+}
+
+interface RaceComparison {
+  race_date: string;
+  event: string;
+  actual_seconds: number;
+  projected_seconds: number;
+  error_seconds: number;
+}
+
+interface UserAccuracy {
+  races: RaceComparison[];
+  mae_seconds: number | null;
+  sample_size: number;
+  meets_benchmark?: boolean;
+}
+
+function AccuracyTab({
+  globalData,
+  userData,
+  loading,
+}: {
+  globalData: GlobalAccuracy | null;
+  userData: UserAccuracy | null;
+  loading: boolean;
+}) {
+  if (loading) return <TabSpinner />;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Target className="h-4 w-4" /> Global Model Accuracy
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {globalData && globalData.mae_seconds != null ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold tabular-nums">
+                    {globalData.mae_seconds.toFixed(1)}s
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Mean Absolute Error
+                  </p>
+                </div>
+                <Badge
+                  variant={globalData.meets_benchmark ? "default" : "secondary"}
+                  className="flex items-center gap-1"
+                >
+                  {globalData.meets_benchmark ? (
+                    <CheckCircle className="h-3 w-3" />
+                  ) : (
+                    <XCircle className="h-3 w-3" />
+                  )}
+                  {globalData.meets_benchmark ? "Meets" : "Below"} {globalData.benchmark_target}s benchmark
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Bias</p>
+                  <p className="font-medium tabular-nums">
+                    {globalData.bias_seconds != null ? `${globalData.bias_seconds > 0 ? "+" : ""}${globalData.bias_seconds.toFixed(1)}s` : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">95% Limits</p>
+                  <p className="font-medium tabular-nums">
+                    {globalData.bland_altman_lower != null && globalData.bland_altman_upper != null
+                      ? `${globalData.bland_altman_lower.toFixed(0)}s to ${globalData.bland_altman_upper.toFixed(0)}s`
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Sample Size</p>
+                  <p className="font-medium tabular-nums">{globalData.sample_size}</p>
+                </div>
+              </div>
+              {globalData.metric_date && (
+                <p className="text-[10px] text-muted-foreground">
+                  Last computed: {new Date(globalData.metric_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No global accuracy data yet. Metrics are computed weekly.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {userData && userData.races.length > 0 && (
+        <>
+          <Card>
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold tabular-nums">
+                  {userData.mae_seconds != null ? `${userData.mae_seconds.toFixed(1)}s` : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">Your MAE ({userData.sample_size} races)</p>
+              </div>
+              {userData.meets_benchmark != null && (
+                <Badge variant={userData.meets_benchmark ? "default" : "secondary"}>
+                  {userData.meets_benchmark ? "Within target" : "Improving"}
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Race Comparisons</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Date</TableHead>
+                    <TableHead className="text-xs">Event</TableHead>
+                    <TableHead className="text-xs text-right">Actual</TableHead>
+                    <TableHead className="text-xs text-right">Projected</TableHead>
+                    <TableHead className="text-xs text-right">Error</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {userData.races.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs tabular-nums">{r.race_date}</TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {EVENT_LABELS[r.event] ?? r.event}
+                      </TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">
+                        {formatTime(r.actual_seconds)}
+                      </TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">
+                        {formatTime(r.projected_seconds)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-xs text-right tabular-nums font-medium ${
+                          Math.abs(r.error_seconds) <= 7 ? "text-green-500" : "text-amber-500"
+                        }`}
+                      >
+                        {formatDelta(r.error_seconds)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {userData && userData.races.length === 0 && (
+        <NoData message="No race results to compare yet. Complete a race to see accuracy data." />
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────
    Main Performance Page
    ──────────────────────────────────────────────────────────── */
 
@@ -864,6 +1051,9 @@ export default function PerformancePage() {
   const [adjunctsLoading, setAdjunctsLoading] = useState(false);
   const [honestStateData, setHonestStateData] = useState<HonestStateData | null>(null);
   const [honestStateLoading, setHonestStateLoading] = useState(false);
+  const [accuracyGlobal, setAccuracyGlobal] = useState<GlobalAccuracy | null>(null);
+  const [accuracyUser, setAccuracyUser] = useState<UserAccuracy | null>(null);
+  const [accuracyLoading, setAccuracyLoading] = useState(false);
 
   const markFetched = useCallback((tab: string) => {
     setFetchedTabs((prev) => new Set(prev).add(tab));
@@ -1041,6 +1231,22 @@ export default function PerformancePage() {
     }
   }, [activeTab, fetchedTabs, markFetched]);
 
+  useEffect(() => {
+    if (activeTab === "accuracy" && !fetchedTabs.has("accuracy")) {
+      markFetched("accuracy");
+      setAccuracyLoading(true);
+      Promise.allSettled([
+        apiFetch("/accuracy"),
+        apiFetch("/accuracy/user"),
+      ])
+        .then(([globalRes, userRes]) => {
+          if (globalRes.status === "fulfilled") setAccuracyGlobal(globalRes.value);
+          if (userRes.status === "fulfilled") setAccuracyUser(userRes.value);
+        })
+        .finally(() => setAccuracyLoading(false));
+    }
+  }, [activeTab, fetchedTabs, markFetched]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1065,6 +1271,7 @@ export default function PerformancePage() {
             <TabsTrigger value="learning">Learning</TabsTrigger>
             <TabsTrigger value="adjuncts">Adjuncts</TabsTrigger>
             <TabsTrigger value="honest-state">Honest State</TabsTrigger>
+            <TabsTrigger value="accuracy">Accuracy</TabsTrigger>
           </TabsList>
         </div>
 
@@ -1161,6 +1368,11 @@ export default function PerformancePage() {
         {/* ── Honest State ── */}
         <TabsContent value="honest-state" className="space-y-4 mt-4">
           <HonestStateTab data={honestStateData} loading={honestStateLoading} />
+        </TabsContent>
+
+        {/* ── Accuracy ── */}
+        <TabsContent value="accuracy" className="space-y-4 mt-4">
+          <AccuracyTab globalData={accuracyGlobal} userData={accuracyUser} loading={accuracyLoading} />
         </TabsContent>
       </Tabs>
     </div>

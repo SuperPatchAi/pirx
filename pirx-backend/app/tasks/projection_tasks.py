@@ -46,6 +46,25 @@ def recompute_projection(user_id: str, event: str = "5000") -> dict:
             except Exception:
                 logger.debug("Embedding failed for projection change")
 
+            try:
+                from app.ml.readiness_engine import ReadinessEngine
+                from app.services.notification_service import NotificationService
+                readiness_result = ReadinessEngine.compute_readiness(
+                    features=features,
+                    days_since_last_activity=0,
+                )
+                new_score = readiness_result.score
+                old_score = 0.0
+                if old_proj:
+                    old_score = old_proj.get("readiness_score", 0.0) or 0.0
+                if old_score > 0 and abs(new_score - old_score) >= 5.0:
+                    ns = NotificationService()
+                    payload = ns.check_readiness_shift(user_id, old_score, new_score)
+                    if payload:
+                        ns.dispatch(user_id, payload)
+            except Exception:
+                logger.debug("Readiness notification check failed")
+
         return {
             "status": "updated",
             "user_id": user_id,
@@ -115,13 +134,15 @@ def structural_decay_check() -> dict:
                             "volatility_score": proj.get("volatility_score", 0),
                             "status": "Declining",
                         })
-                db.insert_notification(
-                    user_id,
-                    "intervention",
-                    "Projection Declining",
-                    "No activity logged in 21+ days. Your projection is now marked as declining.",
-                    deep_link="/projection",
+                from app.services.notification_service import NotificationService, NotificationPayload
+                ns = NotificationService()
+                payload = NotificationPayload(
+                    notification_type="intervention",
+                    title="Projection Declining",
+                    body="No activity logged in 21+ days. Your projection is now marked as declining.",
+                    deep_link="/dashboard",
                 )
+                ns.dispatch(user_id, payload)
                 users_stale += 1
                 users_decayed += 1
 
@@ -146,13 +167,15 @@ def structural_decay_check() -> dict:
                             "volatility_score": proj.get("volatility_score", 0),
                             "status": "Holding",
                         })
-                db.insert_notification(
-                    user_id,
-                    "intervention",
-                    "Projection Holding",
-                    "No activity logged in 10+ days. Your supported range is widening.",
-                    deep_link="/projection",
+                from app.services.notification_service import NotificationService, NotificationPayload
+                ns = NotificationService()
+                payload = NotificationPayload(
+                    notification_type="intervention",
+                    title="Projection Holding",
+                    body="No activity logged in 10+ days. Your supported range is widening.",
+                    deep_link="/dashboard",
                 )
+                ns.dispatch(user_id, payload)
                 users_decayed += 1
 
         return {
@@ -229,16 +252,37 @@ def weekly_summary() -> dict:
             if driver_text:
                 body_lines.append(driver_text)
 
-            db.insert_notification(
-                user_id,
-                "weekly_summary",
-                "Your Weekly Summary",
-                "\n".join(body_lines),
-                deep_link="/dashboard",
+            from app.services.notification_service import NotificationService
+            ns = NotificationService()
+            payload = ns.build_weekly_summary(
+                user_id=user_id,
+                weekly_km=total_distance_km,
+                sessions=run_count,
+                projection_change_s=0,
+                event="5000",
             )
+            ns.dispatch(user_id, payload)
             try:
                 from app.services.embedding_service import EmbeddingService
                 EmbeddingService().embed_insight(user_id, "\n".join(body_lines), "weekly_summary")
+            except Exception:
+                pass
+            try:
+                from app.ml.learning_module import LearningModule
+                from app.services.notification_service import NotificationPayload
+                feature_hist = db.get_feature_history(user_id)
+                if feature_hist and len(feature_hist) >= 3:
+                    insights = LearningModule.analyze_training_patterns(feature_hist)
+                    new_emerging = [i for i in insights if i.status in ("emerging", "supported") and i.confidence > 0.6]
+                    if new_emerging:
+                        top_insight = new_emerging[0]
+                        payload = NotificationPayload(
+                            notification_type="new_insight",
+                            title="New Training Insight",
+                            body=top_insight.title,
+                            deep_link="/performance",
+                        )
+                        ns.dispatch(user_id, payload)
             except Exception:
                 pass
             summaries_sent += 1
@@ -325,4 +369,43 @@ def bias_correction() -> dict:
         }
     except Exception as e:
         logger.exception("bias_correction failed")
+        return {"status": "error", "error": str(e)}
+
+
+@celery_app.task(name="app.tasks.projection_tasks.check_race_approaching")
+def check_race_approaching() -> dict:
+    """Daily cron: notify users whose target race is within 14 days."""
+    from datetime import datetime, timedelta, timezone
+    from app.services.supabase_client import SupabaseService
+    from app.services.notification_service import NotificationService
+
+    try:
+        db = SupabaseService()
+        ns = NotificationService()
+        users = db.get_onboarded_users()
+        notified = 0
+
+        now = datetime.now(timezone.utc).date()
+        for user_row in users:
+            user_id = user_row["user_id"]
+            race_date_str = user_row.get("baseline_race_date")
+            if not race_date_str:
+                continue
+            try:
+                if isinstance(race_date_str, str):
+                    race_date = datetime.fromisoformat(race_date_str).date()
+                else:
+                    race_date = race_date_str
+                days_until = (race_date - now).days
+                if 0 < days_until <= 14:
+                    event = user_row.get("primary_event", "5000")
+                    payload = ns.build_race_approaching(user_id, event, days_until)
+                    ns.dispatch(user_id, payload)
+                    notified += 1
+            except Exception:
+                continue
+
+        return {"status": "completed", "notified": notified}
+    except Exception as e:
+        logger.exception("check_race_approaching failed")
         return {"status": "error", "error": str(e)}

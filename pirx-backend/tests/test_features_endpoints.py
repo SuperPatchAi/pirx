@@ -35,44 +35,10 @@ def mock_supabase():
 
 
 class TestZoneDistribution:
-    def test_get_zones_returns_five_zones(self, client):
+    def test_get_zones_returns_null_with_no_data(self, client):
         r = client.get("/features/zones")
         assert r.status_code == 200
-        data = r.json()
-        assert len(data["zones"]) == 5
-
-    def test_zone_names_and_order(self, client):
-        r = client.get("/features/zones")
-        zones = r.json()["zones"]
-        expected = ["Z1", "Z2", "Z3", "Z4", "Z5"]
-        assert [z["zone"] for z in zones] == expected
-
-    def test_zone_fields_present(self, client):
-        r = client.get("/features/zones")
-        for zone in r.json()["zones"]:
-            assert "zone" in zone
-            assert "name" in zone
-            assert "hr_range" in zone
-            assert "pace_range" in zone
-            assert "time_pct" in zone
-
-    def test_distribution_21d_present(self, client):
-        r = client.get("/features/zones")
-        dist = r.json()["distribution_21d"]
-        assert "z1" in dist
-        assert "z2" in dist
-        assert "z3" in dist
-        assert "z4" in dist
-        assert "z5" in dist
-
-    def test_methodology_computed(self, client):
-        r = client.get("/features/zones")
-        data = r.json()
-        assert data["methodology"] in ("Pyramidal", "Polarized", "Mixed")
-
-    def test_z2_efficiency_gain_present(self, client):
-        r = client.get("/features/zones")
-        assert "z2_efficiency_gain_sec_per_km" in r.json()
+        assert r.json() is None
 
     def test_methodology_pyramidal_when_low_intensity_dominant(self):
         from app.routers.features import _compute_methodology
@@ -88,33 +54,10 @@ class TestZoneDistribution:
 
 
 class TestRunningEconomy:
-    def test_get_economy_200(self, client):
+    def test_get_economy_returns_null_with_no_data(self, client):
         r = client.get("/features/economy")
         assert r.status_code == 200
-
-    def test_matched_hr_band_fields(self, client):
-        r = client.get("/features/economy")
-        band = r.json()["matched_hr_band"]
-        assert "hr_range" in band
-        assert "baseline_pace_sec_km" in band
-        assert "current_pace_sec_km" in band
-        assert "efficiency_gain_sec_km" in band
-        assert band["efficiency_gain_sec_km"] == band["baseline_pace_sec_km"] - band["current_pace_sec_km"]
-
-    def test_hr_cost_change(self, client):
-        r = client.get("/features/economy")
-        assert "hr_cost_change_bpm" in r.json()
-
-    def test_intensity_levels(self, client):
-        r = client.get("/features/economy")
-        levels = r.json()["intensity_levels"]
-        assert len(levels) == 3
-        labels = [lv["level"] for lv in levels]
-        assert labels == ["Easy", "Threshold", "Race"]
-        for lv in levels:
-            assert "baseline_pace_sec_km" in lv
-            assert "current_pace_sec_km" in lv
-            assert "delta_sec_km" in lv
+        assert r.json() is None
 
 
 class TestLearningInsights:
@@ -137,12 +80,11 @@ class TestLearningInsights:
             assert "confidence" in insight
             assert insight["category"] in ("consistency", "response", "trend", "risk")
 
-    def test_summary_sections(self, client):
+    def test_summary_is_string(self, client):
         r = client.get("/features/learning")
         summary = r.json()["summary"]
-        assert "what_today_supports" in summary
-        assert "what_is_defensible" in summary
-        assert "what_needs_development" in summary
+        assert isinstance(summary, str)
+        assert len(summary) > 0
 
     def test_structural_identity(self, client):
         r = client.get("/features/learning")
@@ -171,38 +113,25 @@ class TestHonestState:
         assert "what_is_defensible" in data
         assert "what_needs_development" in data
 
-    def test_sections_are_non_empty_lists(self, client):
+    def test_sections_are_lists_when_no_data(self, client):
         r = client.get("/features/honest-state")
         data = r.json()
         for key in ("what_today_supports", "what_is_defensible", "what_needs_development"):
             assert isinstance(data[key], list)
-            assert len(data[key]) > 0
-
-    def test_section_item_fields(self, client):
-        r = client.get("/features/honest-state")
-        data = r.json()
-        for key in ("what_today_supports", "what_is_defensible", "what_needs_development"):
-            for item in data[key]:
-                assert "title" in item
-                assert "body" in item
-                assert "confidence" in item
 
 
 class TestDriverExplainEndpoint:
     """Verify the SHAP-wired explain endpoint works."""
 
-    def test_explain_aerobic_base(self, client):
+    def test_explain_returns_no_data_when_empty(self, client):
         r = client.get("/drivers/aerobic_base/explain")
         assert r.status_code == 200
         data = r.json()
         assert data["driver_name"] == "aerobic_base"
-        assert data["display_name"] == "Aerobic Base"
-        assert "overall_direction" in data
-        assert "top_factors" in data
-        assert "summary" in data
-        assert "confidence" in data
+        assert data["confidence"] == "low"
+        assert data["top_factors"] == []
 
-    def test_explain_all_drivers(self, client):
+    def test_explain_all_drivers_return_200(self, client):
         drivers = ["aerobic_base", "threshold_density", "speed_exposure", "running_economy", "load_consistency"]
         for driver in drivers:
             r = client.get(f"/drivers/{driver}/explain")
@@ -251,24 +180,23 @@ class TestZoneDistributionWithRealData:
         assert len(data["zones"]) == 5
 
         total = sum(z["time_pct"] for z in data["zones"])
-        assert abs(total - 1.0) < 0.01
+        assert abs(total - 100.0) < 1.0
 
-        z1_pct = data["distribution_21d"]["z1"]
-        z2_pct = data["distribution_21d"]["z2"]
-        assert z1_pct > 0
-        assert z2_pct > 0
+        dist = data["distribution"]
+        assert isinstance(dist, list)
+        assert len(dist) == 5
+        assert dist[0]["pct"] > 0
+        assert dist[1]["pct"] > 0
 
     @patch("app.routers.features.SupabaseService")
-    def test_zones_fallback_no_activities(self, mock_cls, client):
+    def test_zones_returns_null_when_no_activities(self, mock_cls, client):
         inst = MagicMock()
         inst.get_recent_activities.return_value = []
         mock_cls.return_value = inst
 
         r = client.get("/features/zones")
         assert r.status_code == 200
-        data = r.json()
-        assert data["distribution_21d"]["z2"] == 0.35
-        assert data["methodology"] in ("Pyramidal", "Polarized", "Mixed")
+        assert r.json() is None
 
 
 class TestRunningEconomyWithRealData:
@@ -292,11 +220,12 @@ class TestRunningEconomyWithRealData:
         data = r.json()
         band = data["matched_hr_band"]
         assert "hr_range" in band
-        expected_gain = band["baseline_pace_sec_km"] - band["current_pace_sec_km"]
-        assert abs(band["efficiency_gain_sec_km"] - expected_gain) < 0.2
+        assert "baseline_pace" in band
+        assert "current_pace" in band
+        assert isinstance(band["efficiency_gain"], (int, float))
 
     @patch("app.routers.features.SupabaseService")
-    def test_economy_fallback_no_matching_activities(self, mock_cls, client):
+    def test_economy_returns_null_when_insufficient_matching(self, mock_cls, client):
         inst = MagicMock()
         inst.get_recent_activities.return_value = [
             {"avg_hr": 120, "avg_pace_sec_per_km": 400, "timestamp": "2026-03-01"},
@@ -305,9 +234,7 @@ class TestRunningEconomyWithRealData:
 
         r = client.get("/features/economy")
         assert r.status_code == 200
-        data = r.json()
-        assert data["matched_hr_band"]["baseline_pace_sec_km"] == 310
-        assert len(data["intensity_levels"]) == 3
+        assert r.json() is None
 
 
 class TestAdjunctAnalysisWithRealData:
@@ -320,11 +247,10 @@ class TestAdjunctAnalysisWithRealData:
             {
                 "adjunct_name": "Ice Baths",
                 "sessions_analyzed": 5,
-                "median_projection_delta_seconds": -2.0,
-                "hr_drift_change_pct": -0.5,
-                "volatility_change": 0.1,
-                "status": "observational",
-                "confidence": 0.4,
+                "median_projection_delta": -2.0,
+                "hr_drift_delta": -0.5,
+                "volatility_delta": 0.1,
+                "statistical_status": "observational",
             },
         ]
         mock_cls.return_value = inst

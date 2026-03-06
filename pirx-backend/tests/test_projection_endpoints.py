@@ -47,16 +47,13 @@ class TestProjectionEndpoints:
         assert data["days"] == 30
         assert isinstance(data["history"], list)
 
-    def test_get_trajectory(self, client):
+    def test_get_trajectory_empty_when_no_data(self, client):
         r = client.get("/projection/trajectory?event=5000")
         assert r.status_code == 200
         data = r.json()
-        assert len(data["scenarios"]) == 3
-        labels = [s["label"] for s in data["scenarios"]]
-        assert labels == ["Maintain", "Push", "Ease Off"]
-        for s in data["scenarios"]:
-            assert "confidence" in s
-            assert "delta_seconds" in s
+        assert data["event"] == "5000"
+        assert isinstance(data["scenarios"], list)
+        assert len(data["scenarios"]) == 0
 
 
 class TestDriverEndpoints:

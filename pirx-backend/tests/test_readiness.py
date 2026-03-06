@@ -203,7 +203,7 @@ class TestReadinessWithRealData:
         assert "fatigue_freshness" in data["components"]
 
     @patch("app.routers.readiness.SupabaseService")
-    def test_readiness_fallback_no_activities(self, mock_cls, client):
+    def test_readiness_returns_insufficient_data_when_no_activities(self, mock_cls, client):
         inst = MagicMock()
         inst.get_recent_activities.return_value = []
         mock_cls.return_value = inst
@@ -211,8 +211,8 @@ class TestReadinessWithRealData:
         r = client.get("/readiness")
         assert r.status_code == 200
         data = r.json()
-        assert 0 <= data["score"] <= 100
-        assert data["label"] in ("Peak", "Good", "Moderate", "Low", "Very Low")
+        assert data["score"] == 0
+        assert data["label"] == "Insufficient Data"
 
     @patch("app.services.feature_service.FeatureService.compute_all_features")
     @patch("app.routers.readiness.SupabaseService")

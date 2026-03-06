@@ -112,16 +112,7 @@ async def explain_driver(
     """Get SHAP-based explanation for driver change."""
     from app.ml.shap_explainer import SHAPExplainer
 
-    MOCK_FEATURES = {
-        "rolling_distance_7d": 35000, "rolling_distance_21d": 90000, "rolling_distance_42d": 170000,
-        "z1_pct": 0.35, "z2_pct": 0.32, "z4_pct": 0.14, "z5_pct": 0.06,
-        "threshold_density_min_week": 22, "speed_exposure_min_week": 8,
-        "hr_drift_sustained": 0.035, "late_session_pace_decay": 0.025,
-        "matched_hr_band_pace": 265,
-        "weekly_load_stddev": 2500, "block_variance": 2800,
-        "session_density_stability": 0.85, "acwr_4w": 1.1,
-    }
-
+    features = None
     try:
         from app.models.activities import NormalizedActivity
 
@@ -131,12 +122,18 @@ async def explain_driver(
             from app.services.feature_service import FeatureService
             activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
             features = FeatureService.compute_all_features(activities, user_id=user["user_id"])
-            features = {k: (v if v is not None else MOCK_FEATURES.get(k, 0)) for k, v in features.items()}
-        else:
-            features = MOCK_FEATURES
     except Exception:
         logger.exception("Failed to load features for explain_driver")
-        features = MOCK_FEATURES
+
+    if features is None:
+        return {
+            "driver_name": driver_name,
+            "display_name": driver_name.replace("_", " ").title(),
+            "overall_direction": "stable",
+            "top_factors": [],
+            "summary": "Sync a wearable to see how this driver affects your projection.",
+            "confidence": "low",
+        }
 
     explanation = SHAPExplainer.explain_driver(driver_name, features)
     return {

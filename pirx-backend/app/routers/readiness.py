@@ -74,18 +74,11 @@ async def get_readiness(
             sleep_score=sleep_score,
         )
     else:
-        mock_features = {
-            "acwr_4w": 1.1,
-            "weekly_load_stddev": 4000,
-            "session_density_stability": 0.8,
-        }
-        result = ReadinessEngine.compute_readiness(
-            features=mock_features,
-            days_since_last_activity=1,
-            days_since_last_threshold=4,
-            days_since_last_long_run=5,
-            days_since_last_race=None,
-            sleep_score=78,
+        return ReadinessResponse(
+            score=0,
+            label="Insufficient Data",
+            components={},
+            factors=[{"name": "No activities synced", "impact": "neutral", "detail": "Sync a wearable to see your readiness score."}],
         )
 
     return ReadinessResponse(

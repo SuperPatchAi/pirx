@@ -79,27 +79,53 @@ async def get_zone_distribution(user: dict = Depends(get_current_user)):
                 zone_times[i] += hr_zones[i]
                 total_zone_time += hr_zones[i]
 
-    if total_zone_time > 0:
-        distribution_21d = {
-            f"z{i+1}": round(zone_times[i] / total_zone_time, 3)
-            for i in range(5)
-        }
-        zones = [
-            {**meta, "time_pct": distribution_21d[f"z{i+1}"]}
-            for i, meta in enumerate(ZONE_META)
-        ]
-    else:
-        distribution_21d = {"z1": 0.25, "z2": 0.35, "z3": 0.18, "z4": 0.15, "z5": 0.07}
-        zones = [
-            {**meta, "time_pct": distribution_21d[f"z{i+1}"]}
-            for i, meta in enumerate(ZONE_META)
-        ]
+    if total_zone_time == 0:
+        return None
+
+    distribution_21d = {
+        f"z{i+1}": round(zone_times[i] / total_zone_time, 3)
+        for i in range(5)
+    }
+    zones = [
+        {**meta, "time_pct": round(distribution_21d[f"z{i+1}"] * 100, 1)}
+        for i, meta in enumerate(ZONE_META)
+    ]
+    distribution_array = [
+        {"zone": f"Z{i+1}", "pct": round(distribution_21d[f"z{i+1}"] * 100, 1)}
+        for i in range(5)
+    ]
 
     return {
         "zones": zones,
-        "distribution_21d": distribution_21d,
-        "z2_efficiency_gain_sec_per_km": 3.2,
+        "distribution": distribution_array,
+        "z2_efficiency_gain": round(distribution_21d.get("z2", 0) * 100, 1),
         "methodology": _compute_methodology(distribution_21d),
+    }
+
+
+def _format_pace(sec_per_km: float) -> str:
+    """Convert seconds-per-km to 'M:SS/km' string."""
+    m = int(sec_per_km) // 60
+    s = int(sec_per_km) % 60
+    return f"{m}:{s:02d}/km"
+
+
+def _build_economy_band(hr_range: str, baseline_sec: float, current_sec: float) -> dict:
+    gain = round(baseline_sec - current_sec, 1)
+    return {
+        "hr_range": hr_range,
+        "baseline_pace": _format_pace(baseline_sec),
+        "current_pace": _format_pace(current_sec),
+        "efficiency_gain": gain,
+    }
+
+
+def _build_intensity_level(level: str, baseline_sec: float, current_sec: float) -> dict:
+    return {
+        "level": level,
+        "baseline": _format_pace(baseline_sec),
+        "current": _format_pace(current_sec),
+        "delta": round(baseline_sec - current_sec, 1),
     }
 
 
@@ -111,7 +137,6 @@ async def get_running_economy(user: dict = Depends(get_current_user)):
 
     HR_LOW, HR_HIGH = 145, 155
     matched_recent: list[float] = []
-    matched_baseline: list[float] = []
 
     for a in activities:
         avg_hr = a.get("avg_hr")
@@ -119,45 +144,23 @@ async def get_running_economy(user: dict = Depends(get_current_user)):
         if avg_hr is None or pace is None:
             continue
         if HR_LOW <= avg_hr <= HR_HIGH:
-            ts = a.get("timestamp", "")
             matched_recent.append(pace)
-            if len(matched_recent) + len(matched_baseline) > 10:
-                matched_baseline.append(pace)
 
-    if len(matched_recent) >= 3:
-        half = len(matched_recent) // 2
-        current_paces = matched_recent[:half] if half > 0 else matched_recent
-        baseline_paces = matched_recent[half:] if half > 0 else matched_recent
+    if len(matched_recent) < 3:
+        return None
 
-        import statistics
-        current_pace = round(statistics.mean(current_paces), 1)
-        baseline_pace = round(statistics.mean(baseline_paces), 1)
-        gain = round(baseline_pace - current_pace, 1)
+    half = len(matched_recent) // 2
+    current_paces = matched_recent[:half] if half > 0 else matched_recent
+    baseline_paces = matched_recent[half:] if half > 0 else matched_recent
 
-        return {
-            "matched_hr_band": {
-                "hr_range": f"{HR_LOW}-{HR_HIGH} bpm",
-                "baseline_pace_sec_km": baseline_pace,
-                "current_pace_sec_km": current_pace,
-                "efficiency_gain_sec_km": gain,
-            },
-            "hr_cost_change_bpm": None,
-            "intensity_levels": [],
-        }
+    import statistics
+    current_pace = round(statistics.mean(current_paces), 1)
+    baseline_pace = round(statistics.mean(baseline_paces), 1)
 
     return {
-        "matched_hr_band": {
-            "hr_range": "145-155 bpm",
-            "baseline_pace_sec_km": 310,
-            "current_pace_sec_km": 295,
-            "efficiency_gain_sec_km": 15,
-        },
-        "hr_cost_change_bpm": -3.5,
-        "intensity_levels": [
-            {"level": "Easy", "baseline_pace_sec_km": 370, "current_pace_sec_km": 355, "delta_sec_km": 15},
-            {"level": "Threshold", "baseline_pace_sec_km": 280, "current_pace_sec_km": 270, "delta_sec_km": 10},
-            {"level": "Race", "baseline_pace_sec_km": 240, "current_pace_sec_km": 234, "delta_sec_km": 6},
-        ],
+        "matched_hr_band": _build_economy_band(f"{HR_LOW}-{HR_HIGH} bpm", baseline_pace, current_pace),
+        "hr_cost_change": 0,
+        "intensity_levels": [],
     }
 
 
@@ -168,14 +171,38 @@ async def get_learning_insights(user: dict = Depends(get_current_user)):
 
     features_history = _load_features_history(user["user_id"])
     insights = LearningModule.analyze_training_patterns(features_history)
-    summary = LearningModule.generate_summary(insights)
+    summary_sections = LearningModule.generate_summary(insights)
+
+    supported_count = len(summary_sections.get("what_today_supports", []))
+    emerging_count = len(summary_sections.get("what_is_defensible", []))
+    obs_count = len(summary_sections.get("what_needs_development", []))
+    total = supported_count + emerging_count + obs_count
+    summary_text = (
+        f"{total} pattern{'s' if total != 1 else ''} detected: "
+        f"{supported_count} supported, {emerging_count} emerging, {obs_count} observational."
+    ) if total > 0 else "Not enough data to detect training patterns yet."
+
+    insight_list = [
+        {"category": i.category, "title": i.title, "body": i.body, "status": i.status, "confidence": i.confidence}
+        for i in insights
+    ]
+
+    structural_identity = None
+    if insight_list:
+        categories = {i["category"] for i in insight_list}
+        parts = []
+        if "response" in categories:
+            parts.append("Volume-Progressive")
+        if "trend" in categories:
+            parts.append("Threshold-Responsive")
+        if "consistency" in categories:
+            parts.append("Load-Consistent")
+        structural_identity = " / ".join(parts) if parts else None
+
     return {
-        "insights": [
-            {"category": i.category, "title": i.title, "body": i.body, "status": i.status, "confidence": i.confidence}
-            for i in insights
-        ],
-        "summary": summary,
-        "structural_identity": "Volume-Progressive / Threshold-Responsive",
+        "insights": insight_list,
+        "summary": summary_text,
+        "structural_identity": structural_identity,
     }
 
 
@@ -190,8 +217,8 @@ async def get_adjunct_analysis(user: dict = Depends(get_current_user)):
                 {
                     "name": r.get("adjunct_name", "Unknown"),
                     "sessions_analyzed": r.get("sessions_analyzed", 0),
-                    "median_projection_delta_seconds": r.get("median_projection_delta", 0.0),
-                    "hr_drift_change_pct": r.get("hr_drift_delta", 0.0),
+                    "median_projection_delta": r.get("median_projection_delta", 0.0),
+                    "hr_drift_change": r.get("hr_drift_delta", 0.0),
                     "volatility_change": r.get("volatility_delta", 0.0),
                     "status": r.get("statistical_status", "observational"),
                     "confidence": min(r.get("sessions_analyzed", 0) / 20.0, 1.0),
@@ -214,13 +241,7 @@ async def get_honest_state(user: dict = Depends(get_current_user)):
     insights = LearningModule.analyze_training_patterns(features_history)
     summary = LearningModule.generate_summary(insights)
     return {
-        "what_today_supports": summary["what_today_supports"] or [
-            {"title": "Consistent Training", "body": "Your training structure shows reliable week-to-week patterns that support continued projection improvement.", "confidence": 0.8},
-        ],
-        "what_is_defensible": summary["what_is_defensible"] or [
-            {"title": "Volume Response", "body": "Your Aerobic Base has been responding positively to progressive volume increases.", "confidence": 0.65},
-        ],
-        "what_needs_development": summary["what_needs_development"] or [
-            {"title": "Speed Exposure", "body": "Zone 5 work remains below the typical range for your event distance.", "confidence": 0.5},
-        ],
+        "what_today_supports": summary["what_today_supports"],
+        "what_is_defensible": summary["what_is_defensible"],
+        "what_needs_development": summary["what_needs_development"],
     }

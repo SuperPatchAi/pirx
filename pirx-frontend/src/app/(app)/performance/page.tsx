@@ -363,7 +363,7 @@ interface ZonesData {
 
 function ZonesTab({ data, loading }: { data: ZonesData | null; loading: boolean }) {
   if (loading) return <TabSpinner />;
-  if (!data) return <NoData message="Zone data not yet available" />;
+  if (!data) return <NoData message="No HR zone data yet. Sync activities with heart rate data to see your zone distribution." />;
 
   const pieData = (data.distribution ?? []).map((d, i) => ({
     name: d.zone,
@@ -458,7 +458,7 @@ interface EconomyData {
 
 function EconomyTab({ data, loading }: { data: EconomyData | null; loading: boolean }) {
   if (loading) return <TabSpinner />;
-  if (!data) return <NoData message="Economy data not yet available" />;
+  if (!data) return <NoData message="Not enough matched-HR activities to compute running economy. Need at least 3 runs in the 145–155 bpm range." />;
 
   const band = data.matched_hr_band;
 
@@ -568,7 +568,7 @@ function getReadinessRingColor(score: number): string {
 
 function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: boolean }) {
   if (loading) return <TabSpinner />;
-  if (!data) return <NoData message="Readiness data not yet available" />;
+  if (!data) return <NoData message="Sync a wearable to see your event readiness score." />;
 
   return (
     <div className="space-y-4">
@@ -614,7 +614,7 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
    ──────────────────────────────────────────────────────────── */
 
 interface LearningData {
-  structural_identity: string;
+  structural_identity: string | null;
   insights: { title: string; body: string; status: string; confidence: number }[];
   summary?: string;
 }
@@ -627,7 +627,7 @@ const INSIGHT_STATUS_COLORS: Record<string, string> = {
 
 function LearningTab({ data, loading }: { data: LearningData | null; loading: boolean }) {
   if (loading) return <TabSpinner />;
-  if (!data) return <NoData message="Learning data not yet available" />;
+  if (!data) return <NoData message="Not enough training history to detect patterns yet. Keep syncing activities." />;
 
   return (
     <div className="space-y-4">
@@ -810,6 +810,9 @@ const SECTION_CONFIG = [
 function HonestStateTab({ data, loading }: { data: HonestStateData | null; loading: boolean }) {
   if (loading) return <TabSpinner />;
   if (!data) return <NoData message="Honest State data not yet available" />;
+
+  const hasAny = SECTION_CONFIG.some(({ key }) => (data[key]?.length ?? 0) > 0);
+  if (!hasAny) return <NoData message="Not enough training data to determine your honest state yet. Sync a wearable to get started." />;
 
   return (
     <div className="space-y-4">
@@ -1032,8 +1035,9 @@ export default function PerformancePage() {
   const [summary, setSummary] = useState({ improvement: 0, change21d: 0, readiness: 0 });
   const [trendsData, setTrendsData] = useState<{ date: string; time: number }[] | null>(null);
   const [trendsRangeData, setTrendsRangeData] = useState<{ date: string; low: number; high: number }[] | null>(null);
-  const [activeTab, setActiveTab] = useState("snapshot");
+  const [activeTab, setActiveTab] = useState("overview");
   const [fetchedTabs, setFetchedTabs] = useState<Set<string>>(new Set());
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<{ event: string; time_seconds: number; race_date: string | null } | null>(null);
 
   // Lazy-loaded tab state
@@ -1153,99 +1157,86 @@ export default function PerformancePage() {
     load();
   }, []);
 
-  // Lazy tab fetching (each tab fetched at most once per mount)
-  useEffect(() => {
-    if (activeTab === "drivers" && !fetchedTabs.has("drivers")) {
-      markFetched("drivers");
-      setDriversLoading(true);
-      apiFetch("/drivers")
-        .then((d) => setDriversData(Array.isArray(d) ? d : d.drivers ?? []))
-        .catch(() => {})
-        .finally(() => setDriversLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
+  const lazyFetch = useCallback(
+    (key: string, fetcher: () => void) => {
+      if (!fetchedTabs.has(key)) {
+        markFetched(key);
+        fetcher();
+      }
+    },
+    [fetchedTabs, markFetched]
+  );
 
-  useEffect(() => {
-    if (activeTab === "zones" && !fetchedTabs.has("zones")) {
-      markFetched("zones");
-      setZonesLoading(true);
-      apiFetch("/features/zones")
-        .then(setZonesData)
-        .catch(() => {})
-        .finally(() => setZonesLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
+  const handleSectionToggle = useCallback(
+    (section: string, open: boolean) => {
+      setExpandedSection(open ? section : null);
+      if (!open) return;
 
-  useEffect(() => {
-    if (activeTab === "economy" && !fetchedTabs.has("economy")) {
-      markFetched("economy");
-      setEconomyLoading(true);
-      apiFetch("/features/economy")
-        .then(setEconomyData)
-        .catch(() => {})
-        .finally(() => setEconomyLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
+      const loaders: Record<string, () => void> = {
+        drivers: () => {
+          setDriversLoading(true);
+          apiFetch("/drivers")
+            .then((d) => setDriversData(Array.isArray(d) ? d : d.drivers ?? []))
+            .catch(() => {})
+            .finally(() => setDriversLoading(false));
+        },
+        zones: () => {
+          setZonesLoading(true);
+          apiFetch("/features/zones")
+            .then(setZonesData)
+            .catch(() => {})
+            .finally(() => setZonesLoading(false));
+        },
+        economy: () => {
+          setEconomyLoading(true);
+          apiFetch("/features/economy")
+            .then(setEconomyData)
+            .catch(() => {})
+            .finally(() => setEconomyLoading(false));
+        },
+        readiness: () => {
+          setReadinessLoading(true);
+          apiFetch("/readiness")
+            .then(setReadinessData)
+            .catch(() => {})
+            .finally(() => setReadinessLoading(false));
+        },
+        learning: () => {
+          setLearningLoading(true);
+          apiFetch("/features/learning")
+            .then(setLearningData)
+            .catch(() => {})
+            .finally(() => setLearningLoading(false));
+        },
+        adjuncts: () => {
+          setAdjunctsLoading(true);
+          apiFetch("/features/adjuncts")
+            .then((d) => setAdjunctsData(Array.isArray(d) ? d : d.adjuncts ?? []))
+            .catch(() => {})
+            .finally(() => setAdjunctsLoading(false));
+        },
+        "honest-state": () => {
+          setHonestStateLoading(true);
+          apiFetch("/features/honest-state")
+            .then(setHonestStateData)
+            .catch(() => {})
+            .finally(() => setHonestStateLoading(false));
+        },
+        accuracy: () => {
+          setAccuracyLoading(true);
+          Promise.allSettled([apiFetch("/accuracy"), apiFetch("/accuracy/user")])
+            .then(([globalRes, userRes]) => {
+              if (globalRes.status === "fulfilled") setAccuracyGlobal(globalRes.value);
+              if (userRes.status === "fulfilled") setAccuracyUser(userRes.value);
+            })
+            .finally(() => setAccuracyLoading(false));
+        },
+      };
 
-  useEffect(() => {
-    if (activeTab === "readiness" && !fetchedTabs.has("readiness")) {
-      markFetched("readiness");
-      setReadinessLoading(true);
-      apiFetch("/readiness")
-        .then(setReadinessData)
-        .catch(() => {})
-        .finally(() => setReadinessLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
-
-  useEffect(() => {
-    if (activeTab === "learning" && !fetchedTabs.has("learning")) {
-      markFetched("learning");
-      setLearningLoading(true);
-      apiFetch("/features/learning")
-        .then(setLearningData)
-        .catch(() => {})
-        .finally(() => setLearningLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
-
-  useEffect(() => {
-    if (activeTab === "adjuncts" && !fetchedTabs.has("adjuncts")) {
-      markFetched("adjuncts");
-      setAdjunctsLoading(true);
-      apiFetch("/features/adjuncts")
-        .then((d) => setAdjunctsData(Array.isArray(d) ? d : d.adjuncts ?? []))
-        .catch(() => {})
-        .finally(() => setAdjunctsLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
-
-  useEffect(() => {
-    if (activeTab === "honest-state" && !fetchedTabs.has("honest-state")) {
-      markFetched("honest-state");
-      setHonestStateLoading(true);
-      apiFetch("/features/honest-state")
-        .then(setHonestStateData)
-        .catch(() => {})
-        .finally(() => setHonestStateLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
-
-  useEffect(() => {
-    if (activeTab === "accuracy" && !fetchedTabs.has("accuracy")) {
-      markFetched("accuracy");
-      setAccuracyLoading(true);
-      Promise.allSettled([
-        apiFetch("/accuracy"),
-        apiFetch("/accuracy/user"),
-      ])
-        .then(([globalRes, userRes]) => {
-          if (globalRes.status === "fulfilled") setAccuracyGlobal(globalRes.value);
-          if (userRes.status === "fulfilled") setAccuracyUser(userRes.value);
-        })
-        .finally(() => setAccuracyLoading(false));
-    }
-  }, [activeTab, fetchedTabs, markFetched]);
+      if (loaders[section]) lazyFetch(section, loaders[section]);
+    },
+    [lazyFetch]
+  );
 
   if (loading) {
     return (
@@ -1255,56 +1246,58 @@ export default function PerformancePage() {
     );
   }
 
+  const ANALYSIS_SECTIONS = [
+    { key: "drivers", label: "Structural Drivers", icon: BarChart3 },
+    { key: "zones", label: "Zone Distribution", icon: Activity },
+    { key: "economy", label: "Running Economy", icon: Heart },
+    { key: "readiness", label: "Event Readiness", icon: Shield },
+    { key: "learning", label: "What We're Learning", icon: Brain },
+    { key: "adjuncts", label: "Adjunct Analysis", icon: Zap },
+    { key: "honest-state", label: "Current Honest State", icon: BookOpen },
+    { key: "accuracy", label: "Model Accuracy", icon: Target },
+  ] as const;
+
+  const renderAnalysisContent = (key: string) => {
+    switch (key) {
+      case "drivers":
+        return <DriversTab drivers={driversData} loading={driversLoading} />;
+      case "zones":
+        return <ZonesTab data={zonesData} loading={zonesLoading} />;
+      case "economy":
+        return <EconomyTab data={economyData} loading={economyLoading} />;
+      case "readiness":
+        return <ReadinessTab data={readinessData} loading={readinessLoading} />;
+      case "learning":
+        return <LearningTab data={learningData} loading={learningLoading} />;
+      case "adjuncts":
+        return <AdjunctsTab data={adjunctsData} loading={adjunctsLoading} />;
+      case "honest-state":
+        return <HonestStateTab data={honestStateData} loading={honestStateLoading} />;
+      case "accuracy":
+        return <AccuracyTab globalData={accuracyGlobal} userData={accuracyUser} loading={accuracyLoading} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold tracking-tight">Performance</h1>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="overflow-x-auto -mx-4 px-4">
-          <TabsList className="w-max">
-            <TabsTrigger value="snapshot">Snapshot</TabsTrigger>
-            <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="drivers">Drivers</TabsTrigger>
-            <TabsTrigger value="zones">Zones</TabsTrigger>
-            <TabsTrigger value="economy">Economy</TabsTrigger>
-            <TabsTrigger value="readiness">Readiness</TabsTrigger>
-            <TabsTrigger value="learning">Learning</TabsTrigger>
-            <TabsTrigger value="adjuncts">Adjuncts</TabsTrigger>
-            <TabsTrigger value="honest-state">Honest State</TabsTrigger>
-            <TabsTrigger value="accuracy">Accuracy</TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="w-full">
+          <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
+          <TabsTrigger value="analysis" className="flex-1">Analysis</TabsTrigger>
+        </TabsList>
 
-        {/* ── Snapshot ── */}
-        <TabsContent value="snapshot" className="space-y-6 mt-4">
+        <TabsContent value="overview" className="space-y-4 mt-4">
           <PerformanceSummary
             improvement={summary.improvement}
             change21d={summary.change21d}
             readiness={summary.readiness}
           />
           <FitnessSnapshotTable snapshot={snapshot} />
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Baseline Race</p>
-                    <p className="text-xs text-muted-foreground">
-                      {baseline
-                        ? `${EVENT_NAMES[baseline.event] ?? baseline.event} — ${formatTime(baseline.time_seconds)}${baseline.race_date ? ` (${new Date(baseline.race_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })})` : ""}`
-                        : "Not set"}
-                    </p>
-                  </div>
-                </div>
-                {baseline && <Badge variant="secondary">Active</Badge>}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* ── Trends ── */}
-        <TabsContent value="trends" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1333,46 +1326,56 @@ export default function PerformancePage() {
               />
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Baseline Race</p>
+                    <p className="text-xs text-muted-foreground">
+                      {baseline
+                        ? `${EVENT_NAMES[baseline.event] ?? baseline.event} — ${formatTime(baseline.time_seconds)}${baseline.race_date ? ` (${new Date(baseline.race_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })})` : ""}`
+                        : "Not set"}
+                    </p>
+                  </div>
+                </div>
+                {baseline && <Badge variant="secondary">Active</Badge>}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* ── Drivers ── */}
-        <TabsContent value="drivers" className="space-y-4 mt-4">
-          <DriversTab drivers={driversData} loading={driversLoading} />
-        </TabsContent>
-
-        {/* ── Zones ── */}
-        <TabsContent value="zones" className="space-y-4 mt-4">
-          <ZonesTab data={zonesData} loading={zonesLoading} />
-        </TabsContent>
-
-        {/* ── Economy ── */}
-        <TabsContent value="economy" className="space-y-4 mt-4">
-          <EconomyTab data={economyData} loading={economyLoading} />
-        </TabsContent>
-
-        {/* ── Readiness ── */}
-        <TabsContent value="readiness" className="space-y-4 mt-4">
-          <ReadinessTab data={readinessData} loading={readinessLoading} />
-        </TabsContent>
-
-        {/* ── Learning ── */}
-        <TabsContent value="learning" className="space-y-4 mt-4">
-          <LearningTab data={learningData} loading={learningLoading} />
-        </TabsContent>
-
-        {/* ── Adjuncts ── */}
-        <TabsContent value="adjuncts" className="space-y-4 mt-4">
-          <AdjunctsTab data={adjunctsData} loading={adjunctsLoading} />
-        </TabsContent>
-
-        {/* ── Honest State ── */}
-        <TabsContent value="honest-state" className="space-y-4 mt-4">
-          <HonestStateTab data={honestStateData} loading={honestStateLoading} />
-        </TabsContent>
-
-        {/* ── Accuracy ── */}
-        <TabsContent value="accuracy" className="space-y-4 mt-4">
-          <AccuracyTab globalData={accuracyGlobal} userData={accuracyUser} loading={accuracyLoading} />
+        <TabsContent value="analysis" className="space-y-3 mt-4">
+          {ANALYSIS_SECTIONS.map(({ key, label, icon: Icon }) => (
+            <Collapsible
+              key={key}
+              open={expandedSection === key}
+              onOpenChange={(open) => handleSectionToggle(key, open)}
+            >
+              <Card>
+                <CollapsibleTrigger className="w-full text-left">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium">{label}</p>
+                    </div>
+                    <ChevronDown
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${
+                        expandedSection === key ? "rotate-180" : ""
+                      }`}
+                    />
+                  </CardContent>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-4 pb-4 border-t pt-4">
+                    {renderAnalysisContent(key)}
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          ))}
         </TabsContent>
       </Tabs>
     </div>

@@ -136,19 +136,8 @@ DRIVER_DISPLAY_NAMES = {
     "load_consistency": "Load Consistency",
 }
 
-MOCK_FEATURES = {
-    "rolling_distance_7d": 35000, "rolling_distance_21d": 90000, "rolling_distance_42d": 170000,
-    "z1_pct": 0.35, "z2_pct": 0.32, "z4_pct": 0.14, "z5_pct": 0.06,
-    "threshold_density_min_week": 22, "speed_exposure_min_week": 8,
-    "hr_drift_sustained": 0.035, "late_session_pace_decay": 0.025,
-    "matched_hr_band_pace": 265,
-    "weekly_load_stddev": 2500, "block_variance": 2800,
-    "session_density_stability": 0.85, "acwr_4w": 1.1,
-}
-
-
-def _load_user_features(user_id: str) -> dict:
-    """Load computed features for a user, falling back to mock data."""
+def _load_user_features(user_id: str) -> dict | None:
+    """Load computed features for a user. Returns None when no data exists."""
     try:
         from app.models.activities import NormalizedActivity
         from app.services.feature_service import FeatureService
@@ -157,11 +146,10 @@ def _load_user_features(user_id: str) -> dict:
         activities_raw = db.get_recent_activities(user_id, days=90)
         if activities_raw:
             activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
-            features = FeatureService.compute_all_features(activities, user_id=user_id)
-            return {k: (v if v is not None else MOCK_FEATURES.get(k, 0)) for k, v in features.items()}
+            return FeatureService.compute_all_features(activities, user_id=user_id)
     except Exception:
         logger.exception("Failed to load user features")
-    return MOCK_FEATURES
+    return None
 
 
 def _build_projection_narrative(driver_explanations: list[dict]) -> str:
@@ -192,6 +180,13 @@ async def explain_projection(
     from app.ml.shap_explainer import SHAPExplainer
 
     features = _load_user_features(user["user_id"])
+    if features is None:
+        return {
+            "event": event,
+            "narrative": "Sync a wearable to see how your projection is calculated.",
+            "drivers": [],
+            "confidence": "low",
+        }
 
     try:
         db = SupabaseService()
@@ -276,32 +271,27 @@ async def get_trajectory(
     try:
         db = SupabaseService()
         projection = db.get_latest_projection(user["user_id"], event)
-        current = projection["midpoint_seconds"] if projection else 1182.0
     except Exception:
         logger.exception("Failed to query projection for trajectory")
-        current = 1182.0
         projection = None
+
+    if not projection:
+        return TrajectoryResponse(event=event, scenarios=[])
+
+    current = projection["midpoint_seconds"]
+    baseline_time = projection.get("baseline_seconds", current)
 
     try:
         engine = TrajectoryEngine()
         activities_raw = db.get_recent_activities(user["user_id"], days=90)
-        if activities_raw:
-            from app.models.activities import NormalizedActivity
-            from app.services.feature_service import FeatureService
-            activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
-            real_features = FeatureService.compute_all_features(activities)
-        else:
-            real_features = {
-                "rolling_distance_7d": 35000, "rolling_distance_21d": 30000,
-                "rolling_distance_42d": 28000, "rolling_distance_90d": 25000,
-                "threshold_density_min_week": 20, "speed_exposure_min_week": 8,
-                "z1_pct": 0.40, "z2_pct": 0.30, "z4_pct": 0.12, "z5_pct": 0.05,
-                "weekly_load_stddev": 4000, "block_variance": 3000,
-                "session_density_stability": 0.8, "acwr_4w": 1.1,
-                "hr_drift_sustained": 0.04, "late_session_pace_decay": 0.03,
-                "matched_hr_band_pace": 270,
-            }
-        baseline_time = projection.get("baseline_seconds", 1260.0) if projection else 1260.0
+        if not activities_raw:
+            return TrajectoryResponse(event=event, scenarios=[])
+
+        from app.models.activities import NormalizedActivity
+        from app.services.feature_service import FeatureService
+        activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
+        real_features = FeatureService.compute_all_features(activities)
+
         scenarios = engine.compute_trajectories(
             user_id=user["user_id"],
             event=event,
@@ -323,33 +313,5 @@ async def get_trajectory(
             ],
         )
     except Exception:
-        logger.exception("TrajectoryEngine failed, falling back to mock")
-        return TrajectoryResponse(
-            event=event,
-            scenarios=[
-                TrajectoryScenario(
-                    label="Maintain",
-                    projected_time_seconds=current - 3,
-                    projected_time_display=_format_time(current - 3),
-                    description="Continue current training pattern",
-                    confidence=0.85,
-                    delta_seconds=3.0,
-                ),
-                TrajectoryScenario(
-                    label="Push",
-                    projected_time_seconds=current - 8,
-                    projected_time_display=_format_time(current - 8),
-                    description="Increase threshold & speed work",
-                    confidence=0.65,
-                    delta_seconds=8.0,
-                ),
-                TrajectoryScenario(
-                    label="Ease Off",
-                    projected_time_seconds=current + 5,
-                    projected_time_display=_format_time(current + 5),
-                    description="Reduce volume, maintain quality",
-                    confidence=0.75,
-                    delta_seconds=-5.0,
-                ),
-            ],
-        )
+        logger.exception("TrajectoryEngine failed")
+        return TrajectoryResponse(event=event, scenarios=[])

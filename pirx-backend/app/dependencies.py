@@ -10,11 +10,18 @@ security = HTTPBearer()
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
+    """Decode and validate a Supabase-issued JWT from the Authorization header.
+
+    NOTE: In production, replace `supabase_jwt_secret` with the actual JWT secret
+    from Supabase Dashboard → Settings → API → JWT Secret. The anon key works for
+    development because Supabase signs tokens with the project's JWT secret, which
+    matches the anon key's HMAC secret in local/dev environments.
+    """
     token = credentials.credentials
     try:
         payload = jwt.decode(
             token,
-            settings.supabase_anon_key,
+            settings.jwt_signing_secret,
             algorithms=["HS256"],
             audience="authenticated",
         )

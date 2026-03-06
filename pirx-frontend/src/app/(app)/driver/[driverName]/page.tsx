@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
   BarChart3,
   Info,
 } from "lucide-react";
+import { DriverScoreChart } from "@/components/charts/driver-score-chart";
 
 // TODO: Replace with API data
 const DRIVER_DATA: Record<
@@ -174,6 +176,23 @@ export default function DriverPage() {
   const trend = trendConfig[data.trend];
   const TrendIcon = trend.icon;
 
+  // TODO: Replace with API data
+  const mockScoreHistory = useMemo(
+    () =>
+      Array.from({ length: 42 }, (_, i) => {
+        const date = new Date(2026, 2, 5);
+        date.setDate(date.getDate() - (41 - i));
+        return {
+          date: date.toISOString().split("T")[0],
+          score: Math.min(
+            100,
+            45 + (i * (data.score - 45)) / 42 + (Math.random() - 0.5) * 5
+          ),
+        };
+      }),
+    [driverName]
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -233,11 +252,7 @@ export default function DriverPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[180px] flex items-center justify-center rounded-lg bg-muted/30">
-            <p className="text-xs text-muted-foreground">
-              Chart — coming with Recharts integration
-            </p>
-          </div>
+          <DriverScoreChart data={mockScoreHistory} />
         </CardContent>
       </Card>
 

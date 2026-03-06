@@ -21,6 +21,7 @@ import {
   Target,
   Zap,
 } from "lucide-react";
+import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 
 // Mock fitness snapshot data
 const SNAPSHOT = [
@@ -225,11 +226,22 @@ export default function PerformancePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[200px] flex items-center justify-center rounded-lg bg-muted/30">
-                <p className="text-xs text-muted-foreground">
-                  Projection trend chart — coming with Recharts
-                </p>
-              </div>
+              {/* TODO: Replace with API data — 5K projection over 90 days */}
+              <ProjectionHistoryChart
+                data={(() => {
+                  const baselineSeconds = 21 * 60 + 0; // 21:00
+                  const improvement = 78;
+                  return Array.from({ length: 90 }, (_, i) => {
+                    const date = new Date(2026, 2, 5);
+                    date.setDate(date.getDate() - (89 - i));
+                    return {
+                      date: date.toISOString().split("T")[0],
+                      time: baselineSeconds - i * (improvement / 90),
+                    };
+                  });
+                })()}
+                baselineTime={21 * 60 + 0}
+              />
             </CardContent>
           </Card>
         </TabsContent>

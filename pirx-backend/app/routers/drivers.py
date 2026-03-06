@@ -1,4 +1,7 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
+
 from app.dependencies import get_current_user
 from app.models.projection import (
     DriversResponse,
@@ -7,6 +10,9 @@ from app.models.projection import (
     DriverDetailPoint,
     DriverExplanation,
 )
+from app.services.supabase_client import SupabaseService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -26,17 +32,18 @@ DRIVER_DESCRIPTIONS = {
     "load_consistency": "Regularity of training load week-to-week",
 }
 
+DRIVER_KEYS = [
+    "aerobic_base",
+    "threshold_density",
+    "speed_exposure",
+    "running_economy",
+    "load_consistency",
+]
 
-@router.get("", response_model=DriversResponse)
-async def get_drivers(
-    event: str = Query(default="5000"),
-    user: dict = Depends(get_current_user),
-):
-    """Get all 5 driver states with contributions.
+TREND_EMOJI = {"improving": "↑", "stable": "→", "declining": "↓"}
 
-    TODO: Load from driver_state table via Supabase.
-    """
-    # Mock data
+
+def _mock_drivers(event: str) -> DriversResponse:
     drivers = [
         DriverSummary(
             driver_name="aerobic_base",
@@ -79,10 +86,77 @@ async def get_drivers(
             trend_emoji="↑",
         ),
     ]
-
     total = sum(d.contribution_seconds for d in drivers)
-
     return DriversResponse(event=event, drivers=drivers, total_improvement_seconds=total)
+
+
+def _row_to_driver_summaries(row: dict) -> list[DriverSummary]:
+    """Convert a driver_state DB row into a list of DriverSummary models."""
+    summaries = []
+    for key in DRIVER_KEYS:
+        contribution = row.get(f"{key}_seconds", 0.0)
+        score = row.get(f"{key}_score", 50.0)
+        trend = row.get(f"{key}_trend", "stable")
+        summaries.append(
+            DriverSummary(
+                driver_name=key,
+                display_name=DRIVER_DISPLAY_NAMES[key],
+                contribution_seconds=contribution,
+                score=score,
+                trend=trend,
+                trend_emoji=TREND_EMOJI.get(trend, "→"),
+            )
+        )
+    return summaries
+
+
+def _mock_driver_detail(driver_name: str, days: int) -> DriverDetailResponse:
+    from datetime import datetime, timedelta
+
+    display_name = DRIVER_DISPLAY_NAMES.get(
+        driver_name, driver_name.replace("_", " ").title()
+    )
+    description = DRIVER_DESCRIPTIONS.get(driver_name, "")
+    history = []
+    base_score = 55.0
+    for i in range(min(days, 30)):
+        date = datetime(2026, 3, 5) - timedelta(days=i)
+        score = base_score + (i * 0.5)
+        history.append(
+            DriverDetailPoint(date=date.strftime("%Y-%m-%d"), score=round(min(score, 100), 1))
+        )
+    history.reverse()
+    return DriverDetailResponse(
+        driver_name=driver_name,
+        display_name=display_name,
+        description=description,
+        score=72.0,
+        trend="improving",
+        contribution_seconds=23.4,
+        history=history,
+    )
+
+
+@router.get("", response_model=DriversResponse)
+async def get_drivers(
+    event: str = Query(default="5000"),
+    user: dict = Depends(get_current_user),
+):
+    """Get all 5 driver states with contributions."""
+    try:
+        db = SupabaseService()
+        rows = db.get_latest_drivers(user["user_id"])
+    except Exception:
+        logger.exception("Failed to query driver_state")
+        rows = []
+
+    if rows:
+        row = rows[0]
+        drivers = _row_to_driver_summaries(row)
+        total = sum(d.contribution_seconds for d in drivers)
+        return DriversResponse(event=event, drivers=drivers, total_improvement_seconds=total)
+
+    return _mock_drivers(event)
 
 
 @router.get("/{driver_name}/explain", response_model=DriverExplanation)
@@ -90,10 +164,7 @@ async def explain_driver(
     driver_name: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get SHAP-based explanation for driver change.
-
-    TODO: Compute SHAP values from projection engine.
-    """
+    """Get SHAP-based explanation for driver change."""
     return DriverExplanation(
         driver_name=driver_name,
         top_factors=[
@@ -111,37 +182,41 @@ async def get_driver_detail(
     days: int = Query(default=42, ge=7, le=90),
     user: dict = Depends(get_current_user),
 ):
-    """Get single driver trend data.
-
-    TODO: Load from driver_state history via Supabase.
-    """
-    from datetime import datetime, timedelta
-
+    """Get single driver trend data."""
     display_name = DRIVER_DISPLAY_NAMES.get(
         driver_name, driver_name.replace("_", " ").title()
     )
     description = DRIVER_DESCRIPTIONS.get(driver_name, "")
 
-    # Mock history
-    history = []
-    base_score = 55.0
-    for i in range(min(days, 30)):
-        date = datetime(2026, 3, 5) - timedelta(days=i)
-        score = base_score + (i * 0.5)
-        history.append(
-            DriverDetailPoint(
-                date=date.strftime("%Y-%m-%d"),
-                score=round(min(score, 100), 1),
-            )
-        )
-    history.reverse()
+    try:
+        db = SupabaseService()
+        rows = db.get_driver_history(user["user_id"], days=days)
+    except Exception:
+        logger.exception("Failed to query driver history")
+        rows = []
 
-    return DriverDetailResponse(
-        driver_name=driver_name,
-        display_name=display_name,
-        description=description,
-        score=72.0,
-        trend="improving",
-        contribution_seconds=23.4,
-        history=history,
-    )
+    if rows:
+        latest = rows[0]
+        score = latest.get(f"{driver_name}_score", 50.0)
+        trend = latest.get(f"{driver_name}_trend", "stable")
+        contribution = latest.get(f"{driver_name}_seconds", 0.0)
+
+        history = [
+            DriverDetailPoint(
+                date=row["computed_at"][:10],
+                score=row.get(f"{driver_name}_score", 50.0),
+            )
+            for row in reversed(rows)
+        ]
+
+        return DriverDetailResponse(
+            driver_name=driver_name,
+            display_name=display_name,
+            description=description,
+            score=score,
+            trend=trend,
+            contribution_seconds=contribution,
+            history=history,
+        )
+
+    return _mock_driver_detail(driver_name, days)

@@ -15,6 +15,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import Link from "next/link";
+import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 
 const EVENT_NAMES: Record<string, string> = {
   "1500": "1500m",
@@ -147,6 +148,20 @@ export default function EventPage() {
   const data = MOCK_DATA[eventId] || MOCK_DATA["5000"];
   const eventName = EVENT_NAMES[eventId] || eventId;
 
+  // TODO: Replace with API data
+  const baselineParts = data.baseline.split(":");
+  const baselineSeconds =
+    parseFloat(baselineParts[0]) * 60 +
+    parseFloat(baselineParts[1] || "0");
+  const mockHistory = Array.from({ length: 30 }, (_, i) => {
+    const date = new Date(2026, 2, 5);
+    date.setDate(date.getDate() - (29 - i));
+    return {
+      date: date.toISOString().split("T")[0],
+      time: baselineSeconds - i * (data.improvement / 30),
+    };
+  });
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -206,11 +221,10 @@ export default function EventPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[180px] flex items-center justify-center rounded-lg bg-muted/30">
-            <p className="text-xs text-muted-foreground">
-              Chart — coming with Recharts integration
-            </p>
-          </div>
+          <ProjectionHistoryChart
+            data={mockHistory}
+            baselineTime={baselineSeconds}
+          />
         </CardContent>
       </Card>
 

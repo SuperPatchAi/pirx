@@ -54,8 +54,11 @@ class TestProjectionEndpoints:
         assert r.status_code == 200
         data = r.json()
         assert len(data["scenarios"]) == 3
-        labels = {s["label"] for s in data["scenarios"]}
-        assert labels == {"maintain", "increase", "decrease"}
+        labels = [s["label"] for s in data["scenarios"]]
+        assert labels == ["Maintain", "Push", "Ease Off"]
+        for s in data["scenarios"]:
+            assert "confidence" in s
+            assert "delta_seconds" in s
 
 
 class TestDriverEndpoints:

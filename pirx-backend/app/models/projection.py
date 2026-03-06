@@ -29,10 +29,12 @@ class ProjectionHistoryResponse(BaseModel):
 
 
 class TrajectoryScenario(BaseModel):
-    label: str  # "maintain", "increase", "decrease"
+    label: str  # "Maintain", "Push", "Ease Off"
     projected_time_seconds: float
     projected_time_display: str
     description: str
+    confidence: Optional[float] = None  # 0-1
+    delta_seconds: Optional[float] = None  # positive = faster than current
 
 
 class TrajectoryResponse(BaseModel):

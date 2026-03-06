@@ -137,6 +137,8 @@ async def get_trajectory(
     user: dict = Depends(get_current_user),
 ):
     """Get 2-week trajectory scenarios."""
+    from app.ml.trajectory_engine import TrajectoryEngine
+
     try:
         db = SupabaseService()
         projection = db.get_latest_projection(user["user_id"], event)
@@ -144,27 +146,79 @@ async def get_trajectory(
     except Exception:
         logger.exception("Failed to query projection for trajectory")
         current = 1182.0
+        projection = None
 
-    return TrajectoryResponse(
-        event=event,
-        scenarios=[
-            TrajectoryScenario(
-                label="maintain",
-                projected_time_seconds=current - 3,
-                projected_time_display=_format_time(current - 3),
-                description="Continue current training pattern",
-            ),
-            TrajectoryScenario(
-                label="increase",
-                projected_time_seconds=current - 8,
-                projected_time_display=_format_time(current - 8),
-                description="Increase threshold work by 10 min/week",
-            ),
-            TrajectoryScenario(
-                label="decrease",
-                projected_time_seconds=current + 5,
-                projected_time_display=_format_time(current + 5),
-                description="Reduce training volume by 20%",
-            ),
-        ],
-    )
+    try:
+        engine = TrajectoryEngine()
+        # TODO: Load real features from DB once feature service is wired
+        mock_features: dict = {
+            "rolling_distance_7d": 35000,
+            "rolling_distance_21d": 30000,
+            "rolling_distance_42d": 28000,
+            "rolling_distance_90d": 25000,
+            "threshold_density_min_week": 20,
+            "speed_exposure_min_week": 8,
+            "z1_pct": 0.40,
+            "z2_pct": 0.30,
+            "z4_pct": 0.12,
+            "z5_pct": 0.05,
+            "weekly_load_stddev": 4000,
+            "block_variance": 3000,
+            "session_density_stability": 0.8,
+            "acwr_4w": 1.1,
+            "hr_drift_sustained": 0.04,
+            "late_session_pace_decay": 0.03,
+            "matched_hr_band_pace": 270,
+        }
+        baseline_time = projection.get("baseline_seconds", 1260.0) if projection else 1260.0
+        scenarios = engine.compute_trajectories(
+            user_id=user["user_id"],
+            event=event,
+            baseline_time_s=baseline_time,
+            current_features=mock_features,
+        )
+        return TrajectoryResponse(
+            event=event,
+            scenarios=[
+                TrajectoryScenario(
+                    label=s.label,
+                    projected_time_seconds=s.projected_time_seconds,
+                    projected_time_display=_format_time(s.projected_time_seconds),
+                    description=s.description,
+                    confidence=s.confidence,
+                    delta_seconds=s.delta_from_current,
+                )
+                for s in scenarios
+            ],
+        )
+    except Exception:
+        logger.exception("TrajectoryEngine failed, falling back to mock")
+        return TrajectoryResponse(
+            event=event,
+            scenarios=[
+                TrajectoryScenario(
+                    label="Maintain",
+                    projected_time_seconds=current - 3,
+                    projected_time_display=_format_time(current - 3),
+                    description="Continue current training pattern",
+                    confidence=0.85,
+                    delta_seconds=3.0,
+                ),
+                TrajectoryScenario(
+                    label="Push",
+                    projected_time_seconds=current - 8,
+                    projected_time_display=_format_time(current - 8),
+                    description="Increase threshold & speed work",
+                    confidence=0.65,
+                    delta_seconds=8.0,
+                ),
+                TrajectoryScenario(
+                    label="Ease Off",
+                    projected_time_seconds=current + 5,
+                    projected_time_display=_format_time(current + 5),
+                    description="Reduce volume, maintain quality",
+                    confidence=0.75,
+                    delta_seconds=-5.0,
+                ),
+            ],
+        )

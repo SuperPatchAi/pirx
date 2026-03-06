@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import chat, drivers, features, health, projection, readiness, sync
+from app.routers import chat, drivers, features, health, notifications, physiology, projection, readiness, sync
 
 app = FastAPI(
     title="PIRX API",
@@ -25,3 +25,5 @@ app.include_router(readiness.router, prefix="/readiness", tags=["readiness"])
 app.include_router(sync.router, prefix="/sync", tags=["sync"])
 app.include_router(features.router, prefix="/features", tags=["features"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+app.include_router(physiology.router, prefix="/physiology", tags=["physiology"])

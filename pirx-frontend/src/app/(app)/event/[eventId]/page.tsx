@@ -39,7 +39,7 @@ const MOCK_DATA: Record<
       contribution: number;
       trend: string;
     }[];
-    trajectory: { label: string; time: string; description: string }[];
+    trajectory: { label: string; time: string; description: string; confidence?: number; delta?: number }[];
   }
 > = {
   "1500": {
@@ -81,9 +81,9 @@ const MOCK_DATA: Record<
       },
     ],
     trajectory: [
-      { label: "Maintain", time: "5:40", description: "Continue current pattern" },
-      { label: "Push", time: "5:36", description: "+10 min threshold/week" },
-      { label: "Ease off", time: "5:46", description: "Reduce 20% volume" },
+      { label: "Maintain", time: "5:40", description: "Continue current pattern", confidence: 0.85, delta: 2 },
+      { label: "Push", time: "5:36", description: "Increase threshold & speed work", confidence: 0.65, delta: 6 },
+      { label: "Ease off", time: "5:46", description: "Reduce volume, maintain quality", confidence: 0.75, delta: -4 },
     ],
   },
   "5000": {
@@ -125,9 +125,9 @@ const MOCK_DATA: Record<
       },
     ],
     trajectory: [
-      { label: "Maintain", time: "19:39", description: "Continue current pattern" },
-      { label: "Push", time: "19:34", description: "+10 min threshold/week" },
-      { label: "Ease off", time: "19:47", description: "Reduce 20% volume" },
+      { label: "Maintain", time: "19:39", description: "Continue current pattern", confidence: 0.85, delta: 3 },
+      { label: "Push", time: "19:34", description: "Increase threshold & speed work", confidence: 0.65, delta: 8 },
+      { label: "Ease off", time: "19:47", description: "Reduce volume, maintain quality", confidence: 0.75, delta: -5 },
     ],
   },
 };
@@ -278,10 +278,24 @@ export default function EventPage() {
           <Card key={t.label}>
             <CardContent className="flex items-center justify-between p-3">
               <div>
-                <p className="text-sm font-medium">{t.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{t.label}</p>
+                  {t.confidence != null && (
+                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      {Math.round(t.confidence * 100)}% confidence
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{t.description}</p>
               </div>
-              <p className="text-lg font-bold tabular-nums">{t.time}</p>
+              <div className="text-right">
+                <p className="text-lg font-bold tabular-nums">{t.time}</p>
+                {t.delta !== undefined && t.delta !== 0 && (
+                  <p className={`text-xs ${t.delta > 0 ? "text-green-500" : "text-red-500"}`}>
+                    {t.delta > 0 ? "-" : "+"}{Math.abs(t.delta)}s
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}

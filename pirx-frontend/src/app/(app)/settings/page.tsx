@@ -63,7 +63,10 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState({
     projectionShift: true,
     readinessChange: true,
+    intervention: true,
     weeklySummary: true,
+    raceApproaching: true,
+    newInsight: true,
   });
 
   return (
@@ -199,6 +202,21 @@ export default function SettingsPage() {
             <Separator />
             <div className="flex items-center justify-between">
               <div>
+                <Label className="text-sm">Intervention Signals</Label>
+                <p className="text-xs text-muted-foreground">
+                  When unusual training patterns detected (ACWR spike)
+                </p>
+              </div>
+              <Switch
+                checked={notifications.intervention}
+                onCheckedChange={(checked) =>
+                  setNotifications((n) => ({ ...n, intervention: checked }))
+                }
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div>
                 <Label className="text-sm">Weekly Summary</Label>
                 <p className="text-xs text-muted-foreground">
                   Monday recap of training + projections
@@ -208,6 +226,36 @@ export default function SettingsPage() {
                 checked={notifications.weeklySummary}
                 onCheckedChange={(checked) =>
                   setNotifications((n) => ({ ...n, weeklySummary: checked }))
+                }
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm">Race Approaching</Label>
+                <p className="text-xs text-muted-foreground">
+                  Reminder when target race is within 2 weeks
+                </p>
+              </div>
+              <Switch
+                checked={notifications.raceApproaching}
+                onCheckedChange={(checked) =>
+                  setNotifications((n) => ({ ...n, raceApproaching: checked }))
+                }
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm">New Insights</Label>
+                <p className="text-xs text-muted-foreground">
+                  When new training patterns are discovered
+                </p>
+              </div>
+              <Switch
+                checked={notifications.newInsight}
+                onCheckedChange={(checked) =>
+                  setNotifications((n) => ({ ...n, newInsight: checked }))
                 }
               />
             </div>

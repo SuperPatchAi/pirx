@@ -1,6 +1,7 @@
 {
   "name": "PIRX — Performance Intelligence",
   "short_name": "PIRX",
+  "id": "/dashboard",
   "description": "Projection-driven performance modeling for runners",
   "start_url": "/dashboard",
   "display": "standalone",
@@ -8,8 +9,10 @@
   "background_color": "#09090b",
   "theme_color": "#09090b",
   "scope": "/",
+  "categories": ["sports", "health", "fitness"],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icon-72.png", "sizes": "72x72", "type": "image/png" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

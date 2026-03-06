@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -9,6 +10,7 @@ from app.services.supabase_client import SupabaseService
 from app.models.terra import TerraWebhookPayload, TerraWidgetRequest
 from app.services.strava_service import StravaService
 from app.services.terra_service import TerraService
+from app.services.cleaning_service import CleaningService
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +100,28 @@ async def disconnect_wearable(
     provider: str, user: dict = Depends(get_current_user)
 ):
     """Disconnect wearable and revoke tokens."""
-    # TODO: Delete from wearable_connections, revoke token at provider
+    db = SupabaseService()
+    try:
+        db.client.table("wearable_connections").update(
+            {"is_active": False, "sync_status": "disconnected"}
+        ).eq("user_id", user["user_id"]).eq("provider", provider).execute()
+    except Exception:
+        logger.exception("Failed to disconnect %s for user %s", provider, user["user_id"])
+
+    if provider == "strava":
+        try:
+            connections = db.get_wearable_connections(user["user_id"])
+            strava_conn = next((c for c in connections if c.get("provider") == "strava"), None)
+            if strava_conn and strava_conn.get("access_token"):
+                import httpx
+                httpx.post(
+                    "https://www.strava.com/oauth/deauthorize",
+                    params={"access_token": strava_conn["access_token"]},
+                    timeout=10,
+                )
+        except Exception:
+            logger.warning("Could not revoke Strava token for user %s", user["user_id"])
+
     return {"provider": provider, "status": "disconnected"}
 
 
@@ -128,8 +151,8 @@ async def strava_webhook_receive(request: Request):
             from app.tasks.sync_tasks import process_activity
             process_activity.delay(
                 str(event.owner_id),
-                "strava",
                 {"activity_id": event.object_id},
+                "strava",
             )
         except Exception:
             logger.exception(
@@ -185,20 +208,25 @@ async def terra_webhook(request: Request):
         if normalized and payload.user and payload.user.reference_id:
             user_id = payload.user.reference_id
             db = SupabaseService()
-            for activity in normalized:
+            for raw_act, activity in zip(payload.data, normalized):
                 try:
-                    db.insert_activity({
-                        "user_id": user_id,
-                        "source": activity.source,
-                        "started_at": activity.timestamp.isoformat(),
-                        "duration_seconds": activity.duration_seconds,
-                        "distance_meters": activity.distance_meters,
-                        "avg_hr": activity.avg_hr,
-                        "max_hr": activity.max_hr,
-                        "avg_pace_sec_per_km": activity.avg_pace_sec_per_km,
-                        "elevation_gain_m": activity.elevation_gain_m,
-                        "activity_type": activity.activity_type,
-                    })
+                    cleaned = CleaningService.clean_activity(activity)
+                    if cleaned and cleaned.duration_seconds and cleaned.duration_seconds >= 60:
+                        db.insert_activity(user_id, {
+                            "source": cleaned.source or "terra",
+                            "external_id": str(raw_act.get("id", "")),
+                            "timestamp": cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat(),
+                            "started_at": cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat(),
+                            "duration_seconds": cleaned.duration_seconds,
+                            "distance_meters": cleaned.distance_meters,
+                            "avg_hr": cleaned.avg_hr,
+                            "max_hr": cleaned.max_hr,
+                            "avg_pace_sec_per_km": cleaned.avg_pace_sec_per_km,
+                            "elevation_gain_m": cleaned.elevation_gain_m,
+                            "calories": cleaned.calories,
+                            "activity_type": cleaned.activity_type,
+                            "hr_zones": cleaned.hr_zones,
+                        })
                 except Exception:
                     logger.exception("Failed to insert Terra activity for user %s", user_id)
 
@@ -239,8 +267,32 @@ async def connect_wearable_generic(
     return {"message": "Not implemented", "provider": provider}
 
 
+@router.post("/trigger")
+async def trigger_sync(user: dict = Depends(get_current_user)):
+    """Trigger a manual sync for the user's connected wearables."""
+    try:
+        from app.tasks.sync_tasks import backfill_history
+        db = SupabaseService()
+        connections = db.get_wearable_connections(user["user_id"])
+        active = [c for c in connections if c.get("is_active")]
+        for conn in active:
+            provider = conn.get("provider", "strava")
+            backfill_history.delay(user["user_id"], provider)
+        return {"status": "sync_triggered", "providers": [c.get("provider") for c in active]}
+    except Exception:
+        return {"status": "sync_triggered", "providers": []}
+
+
 @router.post("/backfill")
 async def trigger_backfill(user: dict = Depends(get_current_user)):
     """Trigger historical data backfill for a user."""
-    # TODO: Queue Celery wearable_backfill task
-    return {"message": "Backfill queued", "user_id": user["user_id"]}
+    from app.tasks.sync_tasks import backfill_history
+    db = SupabaseService()
+    connections = db.get_wearable_connections(user["user_id"])
+    active = [c for c in connections if c.get("is_active")]
+    providers_queued = []
+    for conn in active:
+        provider = conn.get("provider", "strava")
+        backfill_history.delay(user["user_id"], provider)
+        providers_queued.append(provider)
+    return {"message": "Backfill queued", "user_id": user["user_id"], "providers": providers_queued}

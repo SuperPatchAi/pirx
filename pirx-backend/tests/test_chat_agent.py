@@ -62,7 +62,11 @@ class TestTools:
         )
         assert result["driver"] == "Aerobic Base"
 
-    def test_search_insights_stub(self):
+    @patch("app.services.embedding_service.EmbeddingService")
+    def test_search_insights_stub(self, mock_emb_cls):
+        mock_emb = MagicMock()
+        mock_emb_cls.return_value = mock_emb
+        mock_emb.search.return_value = []
         result = search_insights.invoke(
             {"user_id": "test", "query": "why did my projection improve?"}
         )
@@ -70,7 +74,13 @@ class TestTools:
         assert result["query"] == "why did my projection improve?"
         assert result["results"] == []
 
-    def test_get_readiness_returns_score(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_get_readiness_returns_score(self, mock_client_fn):
+        mock_client = MagicMock()
+        mock_client_fn.return_value = mock_client
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+
         result = get_readiness.invoke({"user_id": "test"})
         assert "score" in result
         assert 0 <= result["score"] <= 100
@@ -293,8 +303,10 @@ class TestAgentStructure:
 
         agent = create_agent()
         graph_nodes = agent.get_graph().nodes
-        assert "chatbot" in graph_nodes
+        assert "agent" in graph_nodes
         assert "tools" in graph_nodes
+        assert "classify_intent" in graph_nodes
+        assert "generate_response" in graph_nodes
 
     def test_agent_state_type(self):
         from app.chat.agent import AgentState

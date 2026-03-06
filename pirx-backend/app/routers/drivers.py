@@ -43,50 +43,7 @@ TREND_EMOJI = {"improving": "↑", "stable": "→", "declining": "↓"}
 
 
 def _mock_drivers(event: str) -> DriversResponse:
-    drivers = [
-        DriverSummary(
-            driver_name="aerobic_base",
-            display_name="Aerobic Base",
-            contribution_seconds=23.4,
-            score=72,
-            trend="improving",
-            trend_emoji="↑",
-        ),
-        DriverSummary(
-            driver_name="threshold_density",
-            display_name="Threshold Density",
-            contribution_seconds=19.5,
-            score=65,
-            trend="improving",
-            trend_emoji="↑",
-        ),
-        DriverSummary(
-            driver_name="speed_exposure",
-            display_name="Speed Exposure",
-            contribution_seconds=11.7,
-            score=48,
-            trend="stable",
-            trend_emoji="→",
-        ),
-        DriverSummary(
-            driver_name="running_economy",
-            display_name="Running Economy",
-            contribution_seconds=12.2,
-            score=58,
-            trend="stable",
-            trend_emoji="→",
-        ),
-        DriverSummary(
-            driver_name="load_consistency",
-            display_name="Load Consistency",
-            contribution_seconds=11.2,
-            score=70,
-            trend="improving",
-            trend_emoji="↑",
-        ),
-    ]
-    total = sum(d.contribution_seconds for d in drivers)
-    return DriversResponse(event=event, drivers=drivers, total_improvement_seconds=total)
+    return DriversResponse(event=event, drivers=[], total_improvement_seconds=0)
 
 
 def _row_to_driver_summaries(row: dict) -> list[DriverSummary]:
@@ -110,29 +67,18 @@ def _row_to_driver_summaries(row: dict) -> list[DriverSummary]:
 
 
 def _mock_driver_detail(driver_name: str, days: int) -> DriverDetailResponse:
-    from datetime import datetime, timedelta
-
     display_name = DRIVER_DISPLAY_NAMES.get(
         driver_name, driver_name.replace("_", " ").title()
     )
     description = DRIVER_DESCRIPTIONS.get(driver_name, "")
-    history = []
-    base_score = 55.0
-    for i in range(min(days, 30)):
-        date = datetime(2026, 3, 5) - timedelta(days=i)
-        score = base_score + (i * 0.5)
-        history.append(
-            DriverDetailPoint(date=date.strftime("%Y-%m-%d"), score=round(min(score, 100), 1))
-        )
-    history.reverse()
     return DriverDetailResponse(
         driver_name=driver_name,
         display_name=display_name,
         description=description,
-        score=72.0,
-        trend="improving",
-        contribution_seconds=23.4,
-        history=history,
+        score=0,
+        trend="stable",
+        contribution_seconds=0,
+        history=[],
     )
 
 
@@ -166,8 +112,7 @@ async def explain_driver(
     """Get SHAP-based explanation for driver change."""
     from app.ml.shap_explainer import SHAPExplainer
 
-    # TODO: Load real features from Supabase
-    mock_features = {
+    MOCK_FEATURES = {
         "rolling_distance_7d": 35000, "rolling_distance_21d": 90000, "rolling_distance_42d": 170000,
         "z1_pct": 0.35, "z2_pct": 0.32, "z4_pct": 0.14, "z5_pct": 0.06,
         "threshold_density_min_week": 22, "speed_exposure_min_week": 8,
@@ -176,7 +121,24 @@ async def explain_driver(
         "weekly_load_stddev": 2500, "block_variance": 2800,
         "session_density_stability": 0.85, "acwr_4w": 1.1,
     }
-    explanation = SHAPExplainer.explain_driver(driver_name, mock_features)
+
+    try:
+        from app.models.activities import NormalizedActivity
+
+        db = SupabaseService()
+        activities_raw = db.get_recent_activities(user["user_id"], days=90)
+        if activities_raw:
+            from app.services.feature_service import FeatureService
+            activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
+            features = FeatureService.compute_all_features(activities, user_id=user["user_id"])
+            features = {k: (v if v is not None else MOCK_FEATURES.get(k, 0)) for k, v in features.items()}
+        else:
+            features = MOCK_FEATURES
+    except Exception:
+        logger.exception("Failed to load features for explain_driver")
+        features = MOCK_FEATURES
+
+    explanation = SHAPExplainer.explain_driver(driver_name, features)
     return {
         "driver_name": explanation.driver_name,
         "display_name": explanation.display_name,

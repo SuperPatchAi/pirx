@@ -19,134 +19,7 @@ import {
 } from "lucide-react";
 import { DriverScoreChart } from "@/components/charts/driver-score-chart";
 
-// TODO: Replace with API data
-const DRIVER_DATA: Record<
-  string,
-  {
-    displayName: string;
-    description: string;
-    score: number;
-    trend: "improving" | "stable" | "declining";
-    contribution: number;
-    factors: {
-      feature: string;
-      impact: string;
-      direction: "positive" | "negative";
-    }[];
-    insight: string;
-  }
-> = {
-  aerobic_base: {
-    displayName: "Aerobic Base",
-    description:
-      "Volume and easy-effort training that builds your aerobic foundation. Driven by total distance, Zone 1-2 time, and long runs.",
-    score: 72,
-    trend: "improving",
-    contribution: 23.4,
-    factors: [
-      {
-        feature: "Weekly distance up 15%",
-        impact: "+8.2s",
-        direction: "positive",
-      },
-      {
-        feature: "Z2 time increased",
-        impact: "+5.1s",
-        direction: "positive",
-      },
-      {
-        feature: "Long run consistency",
-        impact: "+3.4s",
-        direction: "positive",
-      },
-    ],
-    insight:
-      "Your aerobic base has been your strongest driver over the past 3 weeks. Maintaining 40+ km/week with mostly easy runs is paying off.",
-  },
-  threshold_density: {
-    displayName: "Threshold Density",
-    description:
-      "Time spent at threshold intensity (Zone 4) that raises your lactate ceiling and improves sustainable race pace.",
-    score: 65,
-    trend: "improving",
-    contribution: 19.5,
-    factors: [
-      {
-        feature: "Z4 time +12 min/week",
-        impact: "+7.8s",
-        direction: "positive",
-      },
-      {
-        feature: "Matched HR band pace improving",
-        impact: "+4.2s",
-        direction: "positive",
-      },
-    ],
-    insight:
-      "You've added consistent threshold work. Consider maintaining current Z4 volume rather than increasing further.",
-  },
-  speed_exposure: {
-    displayName: "Speed Exposure",
-    description:
-      "High-intensity work (Zone 5) that develops neuromuscular power and top-end speed.",
-    score: 48,
-    trend: "stable",
-    contribution: 11.7,
-    factors: [
-      {
-        feature: "Z5 time unchanged",
-        impact: "0s",
-        direction: "positive",
-      },
-    ],
-    insight:
-      "Speed work has been steady. Adding 1-2 short intervals per week could unlock further gains.",
-  },
-  running_economy: {
-    displayName: "Running Economy",
-    description:
-      "How efficiently you convert energy to pace at a given heart rate. Improved through consistent strides and technique work.",
-    score: 58,
-    trend: "stable",
-    contribution: 12.2,
-    factors: [
-      {
-        feature: "HR drift improving",
-        impact: "+3.1s",
-        direction: "positive",
-      },
-      {
-        feature: "Late session decay stable",
-        impact: "+1.5s",
-        direction: "positive",
-      },
-    ],
-    insight:
-      "Your economy is solid and holding. Strides after easy runs can further improve neuromuscular efficiency.",
-  },
-  load_consistency: {
-    displayName: "Load Consistency",
-    description:
-      "Regularity of training load week-to-week. Consistent loading reduces injury risk and maximizes adaptation.",
-    score: 70,
-    trend: "improving",
-    contribution: 11.2,
-    factors: [
-      {
-        feature: "Weekly load variance decreased",
-        impact: "+4.5s",
-        direction: "positive",
-      },
-      {
-        feature: "ACWR in safe zone (1.1)",
-        impact: "+2.1s",
-        direction: "positive",
-      },
-    ],
-    insight:
-      "Excellent consistency over the past month. Your ACWR is in the optimal training zone.",
-  },
-};
+const EMPTY_FACTORS: { feature: string; impact: string; direction: "positive" | "negative" }[] = [];
 
 const trendConfig = {
   improving: {
@@ -173,7 +46,6 @@ export default function DriverPage() {
   const router = useRouter();
   const params = useParams();
   const driverName = params.driverName as string;
-  const mockData = DRIVER_DATA[driverName] || DRIVER_DATA.aerobic_base;
 
   const [loading, setLoading] = useState(true);
   const [driverDetail, setDriverDetail] = useState<{
@@ -193,9 +65,8 @@ export default function DriverPage() {
     async function load() {
       try {
         const { apiFetch } = await import("@/lib/api");
-        const [detail, history, explain] = await Promise.allSettled([
+        const [detail, explain] = await Promise.allSettled([
           apiFetch(`/drivers/${encodeURIComponent(driverName)}`),
-          apiFetch(`/drivers/${encodeURIComponent(driverName)}/history?days=42`),
           apiFetch(`/drivers/${encodeURIComponent(driverName)}/explain`),
         ]);
 
@@ -207,20 +78,18 @@ export default function DriverPage() {
             score?: number;
             trend?: string;
             contribution_seconds?: number;
+            history?: Array<{ date: string; score: number }>;
           };
           setDriverDetail({
-            displayName: d.display_name ?? mockData.displayName,
-            description: d.description ?? mockData.description,
-            score: d.score ?? mockData.score,
-            trend: (d.trend as "improving" | "stable" | "declining") ?? mockData.trend,
-            contribution: d.contribution_seconds ?? mockData.contribution,
+            displayName: d.display_name ?? driverName.replace(/_/g, " "),
+            description: d.description ?? "",
+            score: d.score ?? 0,
+            trend: (d.trend as "improving" | "stable" | "declining") ?? "stable",
+            contribution: d.contribution_seconds ?? 0,
           });
-        }
-
-        if (history.status === "fulfilled") {
-          const h = history.value as { points?: Array<{ date: string; score: number }> };
-          const points = h.points ?? [];
-          setScoreHistory(points);
+          if (d.history && d.history.length > 0) {
+            setScoreHistory(d.history);
+          }
         }
 
         if (explain.status === "fulfilled") {
@@ -235,7 +104,7 @@ export default function DriverPage() {
                 impact: `${f.impact > 0 ? "+" : ""}${f.impact.toFixed(1)}s`,
                 direction: f.impact >= 0 ? "positive" : "negative",
               })),
-              insight: e.narrative ?? mockData.insight,
+              insight: e.narrative ?? "",
             });
           }
         }
@@ -249,18 +118,13 @@ export default function DriverPage() {
   }, [driverName]);
 
   const data = {
-    ...mockData,
-    ...(driverDetail && {
-      displayName: driverDetail.displayName,
-      description: driverDetail.description,
-      score: driverDetail.score,
-      trend: driverDetail.trend,
-      contribution: driverDetail.contribution,
-    }),
-    ...(shapExplanation && {
-      factors: shapExplanation.factors,
-      insight: shapExplanation.insight,
-    }),
+    displayName: driverDetail?.displayName ?? driverName.replace(/_/g, " "),
+    description: driverDetail?.description ?? "",
+    score: driverDetail?.score ?? 0,
+    trend: driverDetail?.trend ?? ("stable" as const),
+    contribution: driverDetail?.contribution ?? 0,
+    factors: shapExplanation?.factors ?? EMPTY_FACTORS,
+    insight: shapExplanation?.insight ?? "",
   };
   const trend = trendConfig[data.trend];
   const TrendIcon = trend.icon;
@@ -296,7 +160,7 @@ export default function DriverPage() {
     >
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => router.back()}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div>

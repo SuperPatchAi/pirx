@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -134,7 +135,12 @@ class TestFactors:
 
 
 class TestReadinessEndpoint:
-    def test_endpoint_returns_200(self, client):
+    @patch("app.routers.readiness.SupabaseService")
+    def test_endpoint_returns_200(self, mock_svc_cls, client):
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_recent_activities.return_value = []
+        mock_svc.get_recent_physiology.return_value = []
         r = client.get("/readiness")
         assert r.status_code == 200
         data = r.json()
@@ -142,3 +148,109 @@ class TestReadinessEndpoint:
         assert "label" in data
         assert "components" in data
         assert "factors" in data
+
+
+# ---------------------------------------------------------------------------
+# D9: Real data vs fallback tests for readiness endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestReadinessWithRealData:
+    """Verify readiness endpoint with mocked real activities from DB."""
+
+    @patch("app.services.feature_service.FeatureService.compute_all_features")
+    @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_with_activities(self, mock_db_cls, mock_feat_fn, client):
+        mock_db = MagicMock()
+        mock_db.get_recent_activities.return_value = [
+            {
+                "timestamp": "2026-03-05T08:00:00+00:00",
+                "duration_seconds": 2400,
+                "distance_meters": 8000,
+                "avg_hr": 148,
+                "activity_type": "easy",
+            },
+            {
+                "timestamp": "2026-03-03T08:00:00+00:00",
+                "duration_seconds": 3000,
+                "distance_meters": 10000,
+                "avg_hr": 165,
+                "activity_type": "threshold",
+            },
+            {
+                "timestamp": "2026-02-28T08:00:00+00:00",
+                "duration_seconds": 5400,
+                "distance_meters": 18000,
+                "avg_hr": 140,
+                "activity_type": "long_run",
+            },
+        ]
+        mock_db.get_recent_physiology.return_value = [{"sleep_score": 82}]
+        mock_db_cls.return_value = mock_db
+
+        mock_feat_fn.return_value = {
+            "acwr_4w": 1.1,
+            "weekly_load_stddev": 3500,
+            "session_density_stability": 0.85,
+        }
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        data = r.json()
+        assert 0 <= data["score"] <= 100
+        assert data["label"] in ("Peak", "Good", "Moderate", "Low", "Very Low")
+        assert "acwr_balance" in data["components"]
+        assert "fatigue_freshness" in data["components"]
+
+    @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_fallback_no_activities(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_recent_activities.return_value = []
+        mock_cls.return_value = inst
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        data = r.json()
+        assert 0 <= data["score"] <= 100
+        assert data["label"] in ("Peak", "Good", "Moderate", "Low", "Very Low")
+
+    @patch("app.services.feature_service.FeatureService.compute_all_features")
+    @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_no_physiology_data(self, mock_db_cls, mock_feat_fn, client):
+        mock_db = MagicMock()
+        mock_db.get_recent_activities.return_value = [
+            {
+                "timestamp": "2026-03-04T08:00:00+00:00",
+                "duration_seconds": 1800,
+                "distance_meters": 5000,
+                "avg_hr": 150,
+                "activity_type": "easy",
+            },
+            {
+                "timestamp": "2026-03-02T08:00:00+00:00",
+                "duration_seconds": 2400,
+                "distance_meters": 8000,
+                "avg_hr": 165,
+                "activity_type": "threshold",
+            },
+            {
+                "timestamp": "2026-02-28T08:00:00+00:00",
+                "duration_seconds": 5400,
+                "distance_meters": 18000,
+                "avg_hr": 140,
+                "activity_type": "long_run",
+            },
+        ]
+        mock_db.get_recent_physiology.return_value = []
+        mock_db_cls.return_value = mock_db
+
+        mock_feat_fn.return_value = {
+            "acwr_4w": 1.0,
+            "weekly_load_stddev": 2000,
+            "session_density_stability": 0.7,
+        }
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        data = r.json()
+        assert 0 <= data["score"] <= 100

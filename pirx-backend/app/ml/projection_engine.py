@@ -116,6 +116,24 @@ class ProjectionEngine:
         Returns:
             (ProjectionState, list of 5 DriverStates)
         """
+        if baseline_time_s <= 0:
+            zero_state = ProjectionState(
+                user_id=user_id,
+                event=event,
+                projected_time_seconds=0,
+                supported_range_low=0,
+                supported_range_high=0,
+                baseline_time_seconds=0,
+                total_improvement_seconds=0,
+                volatility=0,
+            )
+            zero_drivers = [
+                DriverState(user_id=user_id, event=event, driver_name=d,
+                            contribution_seconds=0.0, score=0.0)
+                for d in DRIVER_NAMES
+            ]
+            return zero_state, zero_drivers
+
         # Step 1: Compute raw driver scores from features
         raw_scores = self._compute_driver_scores(features)
 
@@ -131,6 +149,7 @@ class ProjectionEngine:
 
         # Step 4: Compute raw projected time
         raw_projected = baseline_time_s - total_improvement
+        raw_projected = max(raw_projected, 60.0)
 
         # Step 5: Apply volatility dampening if previous state exists
         if previous_state and previous_state.projected_time_seconds > 0:
@@ -285,6 +304,9 @@ class ProjectionEngine:
         - Fewer available features (more uncertainty)
         - Higher ACWR (training load instability)
         """
+        if projected <= 0:
+            return (0.0, 0.0)
+
         # Base range: 1.5% of projected time
         base_pct = 0.015
 

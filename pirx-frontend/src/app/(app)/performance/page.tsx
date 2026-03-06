@@ -94,10 +94,10 @@ function TabSpinner() {
    ──────────────────────────────────────────────────────────── */
 
 const SNAPSHOT = [
-  { event: "1500", name: "1500m", projected: "5:42", rangeLow: "5:35", rangeHigh: "5:48", baseline: "5:55", improvement: 13, change21d: 3, trend: "improving" },
-  { event: "3000", name: "3K", projected: "12:18", rangeLow: "12:05", rangeHigh: "12:30", baseline: "12:50", improvement: 32, change21d: 8, trend: "improving" },
-  { event: "5000", name: "5K", projected: "19:42", rangeLow: "19:15", rangeHigh: "20:08", baseline: "21:00", improvement: 78, change21d: 5, trend: "improving" },
-  { event: "10000", name: "10K", projected: "43:15", rangeLow: "42:30", rangeHigh: "43:58", baseline: "45:00", improvement: 105, change21d: 12, trend: "improving" },
+  { event: "1500", name: "1500m", projected: "—", rangeLow: "—", rangeHigh: "—", baseline: "—", improvement: 0, change21d: 0, trend: "stable" },
+  { event: "3000", name: "3K", projected: "—", rangeLow: "—", rangeHigh: "—", baseline: "—", improvement: 0, change21d: 0, trend: "stable" },
+  { event: "5000", name: "5K", projected: "—", rangeLow: "—", rangeHigh: "—", baseline: "—", improvement: 0, change21d: 0, trend: "stable" },
+  { event: "10000", name: "10K", projected: "—", rangeLow: "—", rangeHigh: "—", baseline: "—", improvement: 0, change21d: 0, trend: "stable" },
 ];
 
 const trendConfig: Record<string, { icon: typeof TrendingUp; color: string; label: string }> = {
@@ -842,11 +842,12 @@ function HonestStateTab({ data, loading }: { data: HonestStateData | null; loadi
 export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<SnapshotRow[]>(SNAPSHOT);
-  const [summary, setSummary] = useState({ improvement: 78, change21d: 5, readiness: 82 });
+  const [summary, setSummary] = useState({ improvement: 0, change21d: 0, readiness: 0 });
   const [trendsData, setTrendsData] = useState<{ date: string; time: number }[] | null>(null);
   const [trendsRangeData, setTrendsRangeData] = useState<{ date: string; low: number; high: number }[] | null>(null);
   const [activeTab, setActiveTab] = useState("snapshot");
   const [fetchedTabs, setFetchedTabs] = useState<Set<string>>(new Set());
+  const [baseline, setBaseline] = useState<{ event: string; time_seconds: number; race_date: string | null } | null>(null);
 
   // Lazy-loaded tab state
   const [driversData, setDriversData] = useState<Driver[] | null>(null);
@@ -911,7 +912,7 @@ export default function PerformancePage() {
         setSnapshot(rows);
 
         const p5k = results[2];
-        let readinessScore = 82;
+        let readinessScore = 0;
         try {
           const readinessRes = await apiFetch("/readiness");
           if (readinessRes && typeof readinessRes.score === "number") {
@@ -921,11 +922,20 @@ export default function PerformancePage() {
           // fallback to default
         }
 
+        try {
+          const bl = await apiFetch("/account/baseline");
+          if (bl && bl.event) {
+            setBaseline({ event: bl.event, time_seconds: bl.time_seconds ?? 0, race_date: bl.race_date ?? null });
+          }
+        } catch {
+          // baseline not available
+        }
+
         if (p5k.status === "fulfilled") {
           const p = p5k.value as { total_improvement_seconds?: number; twenty_one_day_change?: number };
           setSummary({
-            improvement: p.total_improvement_seconds ?? 78,
-            change21d: p.twenty_one_day_change ?? 5,
+            improvement: p.total_improvement_seconds ?? 0,
+            change21d: p.twenty_one_day_change ?? 0,
             readiness: readinessScore,
           });
         } else {
@@ -945,7 +955,7 @@ export default function PerformancePage() {
           if (ranges.length > 0) setTrendsRangeData(ranges);
         }
       } catch {
-        // Use mock on failure
+        // keep empty defaults on failure
       } finally {
         setLoading(false);
       }
@@ -1073,10 +1083,14 @@ export default function PerformancePage() {
                   <Target className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Baseline Race</p>
-                    <p className="text-xs text-muted-foreground">5K — 21:00 (Feb 15, 2026)</p>
+                    <p className="text-xs text-muted-foreground">
+                      {baseline
+                        ? `${EVENT_NAMES[baseline.event] ?? baseline.event} — ${formatTime(baseline.time_seconds)}${baseline.race_date ? ` (${new Date(baseline.race_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })})` : ""}`
+                        : "Not set"}
+                    </p>
                   </div>
                 </div>
-                <Badge variant="secondary">Active</Badge>
+                {baseline && <Badge variant="secondary">Active</Badge>}
               </div>
             </CardContent>
           </Card>

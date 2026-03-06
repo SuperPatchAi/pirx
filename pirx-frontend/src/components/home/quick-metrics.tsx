@@ -8,21 +8,36 @@ interface Metric {
   subtext?: string;
 }
 
-const MOCK_METRICS: Metric[] = [
-  { label: "Sessions", value: "5", subtext: "this week" },
-  { label: "Distance", value: "42km", subtext: "this week" },
-  { label: "ACWR", value: "1.1", subtext: "safe zone" },
-  { label: "Readiness", value: "82", subtext: "/100" },
-];
-
 interface QuickMetricsProps {
   readinessScore?: number | null;
+  sessionsPerWeek?: number | null;
+  distanceKmPerWeek?: number | null;
+  acwr?: number | null;
 }
 
-export function QuickMetrics({ readinessScore }: QuickMetricsProps) {
-  const metrics = MOCK_METRICS.map((m) =>
-    m.label === "Readiness" && readinessScore != null ? { ...m, value: String(Math.round(readinessScore)) } : m
-  );
+export function QuickMetrics({ readinessScore, sessionsPerWeek, distanceKmPerWeek, acwr }: QuickMetricsProps) {
+  const metrics: Metric[] = [
+    {
+      label: "Sessions",
+      value: sessionsPerWeek != null ? String(sessionsPerWeek) : "—",
+      subtext: "this week",
+    },
+    {
+      label: "Distance",
+      value: distanceKmPerWeek != null ? `${Math.round(distanceKmPerWeek)}km` : "—",
+      subtext: "this week",
+    },
+    {
+      label: "ACWR",
+      value: acwr != null ? acwr.toFixed(1) : "—",
+      subtext: acwr != null ? (acwr >= 0.8 && acwr <= 1.3 ? "safe zone" : acwr > 1.5 ? "danger" : "caution") : "",
+    },
+    {
+      label: "Readiness",
+      value: readinessScore != null ? String(Math.round(readinessScore)) : "—",
+      subtext: "/100",
+    },
+  ];
   return (
     <div className="grid grid-cols-4 gap-2">
       {metrics.map((m) => (

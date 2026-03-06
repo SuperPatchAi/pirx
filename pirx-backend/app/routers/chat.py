@@ -1,11 +1,4 @@
-"""PIRX Chat API — streaming conversation with the LangGraph agent.
-
-Supports:
-- POST /chat — send message, get streaming response
-- GET /chat/history — get conversation history for a thread
-- POST /chat/thread — create a new conversation thread
-- DELETE /chat/thread/{thread_id} — delete a thread
-"""
+"""PIRX Chat API — streaming conversation with the LangGraph agent."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -15,6 +8,7 @@ import json
 import uuid
 
 from app.dependencies import get_current_user
+from app.services.supabase_client import SupabaseService
 
 router = APIRouter()
 
@@ -35,25 +29,20 @@ class ThreadResponse(BaseModel):
     created_at: str
 
 
-# In-memory thread store (TODO: Replace with Supabase or LangGraph PostgresSaver)
-# Structure: { "thread_id": { "user_id": "...", "messages": [...] } }
-_threads: dict[str, dict] = {}
-
-
-def _get_or_create_thread(thread_id: Optional[str], user_id: str) -> str:
-    """Get existing thread (with ownership check) or create new one."""
-    if thread_id and thread_id in _threads:
-        if _threads[thread_id]["user_id"] != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized for this thread")
-        return thread_id
+def _get_or_create_thread(db: SupabaseService, thread_id: Optional[str], user_id: str) -> str:
+    if thread_id:
+        existing = db.get_chat_thread(thread_id)
+        if existing:
+            if existing["user_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Not authorized for this thread")
+            return thread_id
     new_id = thread_id or str(uuid.uuid4())
-    _threads[new_id] = {"user_id": user_id, "messages": []}
+    db.create_chat_thread(user_id, new_id)
     return new_id
 
 
-def _get_thread_messages(thread_id: str) -> list[dict]:
-    """Get messages list from a thread."""
-    return _threads[thread_id]["messages"]
+def _load_thread_messages(db: SupabaseService, thread_id: str) -> list[dict]:
+    return db.get_chat_messages(thread_id)
 
 
 @router.post("", response_model=ChatResponse)
@@ -61,33 +50,27 @@ async def chat(
     body: ChatMessage,
     user: dict = Depends(get_current_user),
 ):
-    """Send a message to the PIRX AI agent and get a response.
-
-    For non-streaming responses. Use POST /chat/stream for streaming.
-    """
     from langchain_core.messages import HumanMessage, AIMessage
     from app.chat.agent import get_agent
 
-    thread_id = _get_or_create_thread(body.thread_id, user["user_id"])
-    messages_list = _get_thread_messages(thread_id)
+    db = SupabaseService()
+    thread_id = _get_or_create_thread(db, body.thread_id, user["user_id"])
 
-    messages_list.append({
-        "role": "user",
-        "content": body.message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    db.insert_chat_message(thread_id, "user", body.message)
+
+    stored_messages = _load_thread_messages(db, thread_id)
 
     try:
         agent = get_agent()
 
         messages = []
-        for msg in messages_list:
+        for msg in stored_messages:
             if msg["role"] == "user":
                 messages.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
                 messages.append(AIMessage(content=msg["content"]))
 
-        result = agent.invoke({
+        result = await agent.ainvoke({
             "messages": messages,
             "user_id": user["user_id"],
         })
@@ -104,12 +87,7 @@ async def chat(
                         "args": tc.get("args", {}),
                     })
 
-        messages_list.append({
-            "role": "assistant",
-            "content": response_text,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool_calls": tool_calls,
-        })
+        db.insert_chat_message(thread_id, "assistant", response_text)
 
         return ChatResponse(
             response=response_text,
@@ -122,11 +100,7 @@ async def chat(
             "This could be because the AI service is not configured. "
             "Please ensure an API key is set in the environment."
         )
-        messages_list.append({
-            "role": "assistant",
-            "content": fallback,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        db.insert_chat_message(thread_id, "assistant", fallback)
         return ChatResponse(
             response=fallback,
             thread_id=thread_id,
@@ -139,28 +113,22 @@ async def chat_stream(
     body: ChatMessage,
     user: dict = Depends(get_current_user),
 ):
-    """Send a message and get a streaming response.
-
-    Returns Server-Sent Events (SSE) with token-by-token responses.
-    """
     from langchain_core.messages import HumanMessage, AIMessage
     from app.chat.agent import get_agent
 
-    thread_id = _get_or_create_thread(body.thread_id, user["user_id"])
-    messages_list = _get_thread_messages(thread_id)
+    db = SupabaseService()
+    thread_id = _get_or_create_thread(db, body.thread_id, user["user_id"])
 
-    messages_list.append({
-        "role": "user",
-        "content": body.message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    db.insert_chat_message(thread_id, "user", body.message)
+
+    stored_messages = _load_thread_messages(db, thread_id)
 
     async def event_generator():
         try:
             agent = get_agent()
 
             messages = []
-            for msg in messages_list:
+            for msg in stored_messages:
                 if msg["role"] == "user":
                     messages.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
@@ -168,7 +136,7 @@ async def chat_stream(
 
             full_response = ""
 
-            for event in agent.stream(
+            async for event in agent.astream(
                 {"messages": messages, "user_id": user["user_id"]},
                 stream_mode="values",
             ):
@@ -180,12 +148,13 @@ async def chat_stream(
                             delta = new_content[len(full_response):]
                             full_response = new_content
                             yield f"data: {json.dumps({'delta': delta, 'thread_id': thread_id})}\n\n"
+                    if hasattr(last, "tool_calls") and last.tool_calls:
+                        tool_names = [tc.get("name", "") for tc in last.tool_calls if isinstance(tc, dict)]
+                        if tool_names:
+                            yield f"data: {json.dumps({'tools': tool_names, 'thread_id': thread_id})}\n\n"
 
-            messages_list.append({
-                "role": "assistant",
-                "content": full_response,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            db_inner = SupabaseService()
+            db_inner.insert_chat_message(thread_id, "assistant", full_response)
 
             yield f"data: {json.dumps({'done': True, 'thread_id': thread_id})}\n\n"
 
@@ -208,17 +177,19 @@ async def get_chat_history(
     thread_id: str = Query(...),
     user: dict = Depends(get_current_user),
 ):
-    """Get conversation history for a thread."""
-    if thread_id not in _threads or _threads[thread_id]["user_id"] != user["user_id"]:
+    db = SupabaseService()
+    thread = db.get_chat_thread(thread_id)
+    if not thread or thread["user_id"] != user["user_id"]:
         raise HTTPException(status_code=404, detail="Thread not found")
-    return {"thread_id": thread_id, "messages": _threads[thread_id]["messages"]}
+    messages = db.get_chat_messages(thread_id)
+    return {"thread_id": thread_id, "messages": messages}
 
 
 @router.post("/thread", response_model=ThreadResponse)
 async def create_thread(user: dict = Depends(get_current_user)):
-    """Create a new conversation thread."""
+    db = SupabaseService()
     thread_id = str(uuid.uuid4())
-    _threads[thread_id] = {"user_id": user["user_id"], "messages": []}
+    db.create_chat_thread(user["user_id"], thread_id)
     return ThreadResponse(
         thread_id=thread_id,
         created_at=datetime.now(timezone.utc).isoformat(),
@@ -230,8 +201,9 @@ async def delete_thread(
     thread_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Delete a conversation thread."""
-    if thread_id not in _threads or _threads[thread_id]["user_id"] != user["user_id"]:
+    db = SupabaseService()
+    thread = db.get_chat_thread(thread_id)
+    if not thread or thread["user_id"] != user["user_id"]:
         raise HTTPException(status_code=404, detail="Thread not found")
-    del _threads[thread_id]
+    db.delete_chat_thread(thread_id)
     return {"status": "deleted", "thread_id": thread_id}

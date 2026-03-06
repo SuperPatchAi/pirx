@@ -16,7 +16,6 @@ celery_app.config_from_object(
             "app.tasks.projection_tasks.*": {"queue": "projection"},
             "app.tasks.feature_engineering.*": {"queue": "projection"},
             "app.tasks.sync_tasks.*": {"queue": "sync"},
-            "app.tasks.chat_tasks.*": {"queue": "chat"},
         },
         "task_time_limit": 300,
         "task_soft_time_limit": 240,

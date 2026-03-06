@@ -1,8 +1,9 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
-import { TrendingUp, Minus, TrendingDown } from "lucide-react";
+import { TrendingUp, Minus, TrendingDown, BarChart3 } from "lucide-react";
 
 interface Driver {
   name: string;
@@ -11,14 +12,6 @@ interface Driver {
   trend: "improving" | "stable" | "declining";
   score: number;
 }
-
-const MOCK_DRIVERS: Driver[] = [
-  { name: "aerobic_base", displayName: "Aerobic Base", contributionSeconds: 23.4, trend: "improving", score: 72 },
-  { name: "threshold_density", displayName: "Threshold", contributionSeconds: 19.5, trend: "improving", score: 65 },
-  { name: "speed_exposure", displayName: "Speed", contributionSeconds: 11.7, trend: "stable", score: 48 },
-  { name: "running_economy", displayName: "Economy", contributionSeconds: 12.2, trend: "stable", score: 58 },
-  { name: "load_consistency", displayName: "Consistency", contributionSeconds: 11.2, trend: "improving", score: 70 },
-];
 
 const trendConfig = {
   improving: { icon: TrendingUp, color: "text-green-500" },
@@ -39,7 +32,23 @@ interface DriverStripProps {
 }
 
 export function DriverStrip({ apiData }: DriverStripProps) {
-  const drivers = apiData ?? MOCK_DRIVERS;
+  const drivers = apiData ?? [];
+
+  if (drivers.length === 0) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground">
+          What&apos;s Driving Your Improvement
+        </h3>
+        <EmptyState
+          icon={BarChart3}
+          message="No driver data yet"
+          submessage="Sync data to see what's driving your improvement"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-muted-foreground">

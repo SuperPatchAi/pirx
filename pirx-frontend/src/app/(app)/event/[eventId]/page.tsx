@@ -38,113 +38,8 @@ const EVENT_NAMES: Record<string, string> = {
   "10000": "10K",
 };
 
-// TODO: Replace with API data
-const MOCK_DATA: Record<
-  string,
-  {
-    projected: string;
-    range: string;
-    baseline: string;
-    improvement: number;
-    change21d: number;
-    drivers: {
-      name: string;
-      display: string;
-      contribution: number;
-      trend: string;
-    }[];
-    trajectory: { label: string; time: string; description: string; confidence?: number; delta?: number }[];
-  }
-> = {
-  "1500": {
-    projected: "5:42",
-    range: "5:35 – 5:48",
-    baseline: "5:55",
-    improvement: 13,
-    change21d: 3,
-    drivers: [
-      {
-        name: "aerobic_base",
-        display: "Aerobic Base",
-        contribution: 3.9,
-        trend: "improving",
-      },
-      {
-        name: "threshold_density",
-        display: "Threshold",
-        contribution: 3.3,
-        trend: "improving",
-      },
-      {
-        name: "speed_exposure",
-        display: "Speed",
-        contribution: 2.0,
-        trend: "stable",
-      },
-      {
-        name: "running_economy",
-        display: "Economy",
-        contribution: 2.0,
-        trend: "stable",
-      },
-      {
-        name: "load_consistency",
-        display: "Consistency",
-        contribution: 1.8,
-        trend: "improving",
-      },
-    ],
-    trajectory: [
-      { label: "Maintain", time: "5:40", description: "Continue current pattern", confidence: 0.85, delta: 2 },
-      { label: "Push", time: "5:36", description: "Increase threshold & speed work", confidence: 0.65, delta: 6 },
-      { label: "Ease off", time: "5:46", description: "Reduce volume, maintain quality", confidence: 0.75, delta: -4 },
-    ],
-  },
-  "5000": {
-    projected: "19:42",
-    range: "19:15 – 20:08",
-    baseline: "21:00",
-    improvement: 78,
-    change21d: 5,
-    drivers: [
-      {
-        name: "aerobic_base",
-        display: "Aerobic Base",
-        contribution: 23.4,
-        trend: "improving",
-      },
-      {
-        name: "threshold_density",
-        display: "Threshold",
-        contribution: 19.5,
-        trend: "improving",
-      },
-      {
-        name: "speed_exposure",
-        display: "Speed",
-        contribution: 11.7,
-        trend: "stable",
-      },
-      {
-        name: "running_economy",
-        display: "Economy",
-        contribution: 12.2,
-        trend: "stable",
-      },
-      {
-        name: "load_consistency",
-        display: "Consistency",
-        contribution: 11.2,
-        trend: "improving",
-      },
-    ],
-    trajectory: [
-      { label: "Maintain", time: "19:39", description: "Continue current pattern", confidence: 0.85, delta: 3 },
-      { label: "Push", time: "19:34", description: "Increase threshold & speed work", confidence: 0.65, delta: 8 },
-      { label: "Ease off", time: "19:47", description: "Reduce volume, maintain quality", confidence: 0.75, delta: -5 },
-    ],
-  },
-};
+const EMPTY_DRIVERS: { name: string; display: string; contribution: number; trend: string }[] = [];
+const EMPTY_TRAJECTORY: { label: string; time: string; description: string; confidence?: number; delta?: number }[] = [];
 
 const trendConfig: Record<
   string,
@@ -159,7 +54,6 @@ export default function EventPage() {
   const router = useRouter();
   const params = useParams();
   const eventId = params.eventId as string;
-  const mockData = MOCK_DATA[eventId] || MOCK_DATA["5000"];
   const eventName = EVENT_NAMES[eventId] || eventId;
 
   const [loading, setLoading] = useState(true);
@@ -209,7 +103,7 @@ export default function EventPage() {
               p.supported_range ??
               (p.supported_range_low != null && p.supported_range_high != null
                 ? `${formatTime(p.supported_range_low)} – ${formatTime(p.supported_range_high)}`
-                : mockData.range),
+                : "—"),
             baseline: formatTime(baselineSeconds),
             improvement,
             change21d: p.twenty_one_day_change ?? 0,
@@ -313,22 +207,20 @@ export default function EventPage() {
   }, [eventId]);
 
   const data = {
-    ...mockData,
-    ...(projection && {
-      projected: projection.projected,
-      range: projection.range,
-      baseline: projection.baseline,
-      improvement: projection.improvement,
-      change21d: projection.change21d,
-    }),
-    drivers: driversData ?? mockData.drivers,
-    trajectory: trajectoryData ?? mockData.trajectory,
+    projected: projection?.projected ?? "—",
+    range: projection?.range ?? "—",
+    baseline: projection?.baseline ?? "—",
+    improvement: projection?.improvement ?? 0,
+    change21d: projection?.change21d ?? 0,
+    drivers: driversData ?? EMPTY_DRIVERS,
+    trajectory: trajectoryData ?? EMPTY_TRAJECTORY,
   };
 
-  const baselineParts = data.baseline.split(":");
+  const baselineParts = data.baseline.includes(":") ? data.baseline.split(":") : [];
   const baselineSeconds =
-    parseFloat(baselineParts[0]) * 60 +
-    parseFloat(baselineParts[1] || "0");
+    baselineParts.length >= 2
+      ? parseFloat(baselineParts[0]) * 60 + parseFloat(baselineParts[1] || "0")
+      : 0;
   const chartData =
     historyData ??
     Array.from({ length: 30 }, (_, i) => {
@@ -356,7 +248,7 @@ export default function EventPage() {
     >
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => router.back()}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div>

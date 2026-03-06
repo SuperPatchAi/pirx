@@ -46,8 +46,8 @@ class ReadinessEngine:
     def compute_readiness(
         features: dict[str, Optional[float]],
         days_since_last_activity: int = 0,
-        days_since_last_threshold: int = 0,
-        days_since_last_long_run: int = 0,
+        days_since_last_threshold: Optional[int] = 0,
+        days_since_last_long_run: Optional[int] = 0,
         days_since_last_race: Optional[int] = None,
         resting_hr_trend: Optional[float] = None,  # positive = rising (bad)
         hrv_trend: Optional[float] = None,  # positive = rising (good)
@@ -97,9 +97,9 @@ class ReadinessEngine:
             days_since_last_threshold, days_since_last_long_run
         )
         components["training_recency"] = recency
-        if days_since_last_threshold > 14:
+        if days_since_last_threshold is not None and days_since_last_threshold > 14:
             factors.append({"factor": "No recent threshold work", "impact": "negative", "detail": f"{days_since_last_threshold} days since last tempo/threshold"})
-        if days_since_last_long_run > 21:
+        if days_since_last_long_run is not None and days_since_last_long_run > 21:
             factors.append({"factor": "No recent long run", "impact": "negative", "detail": f"{days_since_last_long_run} days since last long run"})
 
         # 4. Physiological Markers (15%)
@@ -179,8 +179,12 @@ class ReadinessEngine:
         return float(np.clip(base, 0, 100))
 
     @staticmethod
-    def _score_recency(days_since_threshold: int, days_since_long_run: int) -> float:
+    def _score_recency(days_since_threshold: Optional[int], days_since_long_run: Optional[int]) -> float:
         """Score training recency: recent key workouts = sharper."""
+        if days_since_threshold is None:
+            days_since_threshold = 14
+        if days_since_long_run is None:
+            days_since_long_run = 30
         threshold_score = max(0, 100 - days_since_threshold * 5)
         long_run_score = max(0, 100 - days_since_long_run * 3)
         return (threshold_score * 0.6 + long_run_score * 0.4)

@@ -209,7 +209,7 @@ class LearningModule:
             return insights
 
         # Check if aerobic base improved when volume increased
-        ab_values = [d.get("aerobic_base_seconds", 0) for d in driver_history]
+        ab_values = [d.get("contribution_seconds", 0) for d in driver_history if d.get("driver_name") == "aerobic_base"]
         if len(ab_values) >= 3:
             first = np.mean(ab_values[:len(ab_values)//2])
             second = np.mean(ab_values[len(ab_values)//2:])

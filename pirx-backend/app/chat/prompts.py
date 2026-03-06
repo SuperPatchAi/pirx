@@ -51,3 +51,13 @@ INTENT_CLASSIFICATION_PROMPT = """Classify the user's message into one of these 
 Respond with ONLY the category name, nothing else.
 
 User message: {message}"""
+
+TERMINOLOGY_GUARD = """Before returning any response, verify these replacements:
+- "predicted time" -> "Projected Time"
+- "estimated time" -> "Projected Time"
+- "confidence interval" -> "Supported Range"
+- "factors" -> "Structural Drivers" (when referring to performance components)
+- "race readiness" -> "Event Readiness"
+- Never use: "should", "must", "need to", "have to" (coaching language)
+- Never use: "VO2max", "lactate threshold" as training metrics
+"""

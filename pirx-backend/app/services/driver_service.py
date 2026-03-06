@@ -44,6 +44,29 @@ class DriverService:
                 f"expected {projection_state.total_improvement_seconds}"
             )
 
+        twenty_one_day_change = 0.0
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=21)).isoformat()
+            old_proj = (
+                self.db.client.table("projection_state")
+                .select("midpoint_seconds")
+                .eq("user_id", user_id)
+                .eq("event", event)
+                .lte("computed_at", cutoff)
+                .order("computed_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if old_proj.data:
+                old_time = old_proj.data[0].get("midpoint_seconds", 0)
+                if old_time > 0:
+                    twenty_one_day_change = round(
+                        old_time - projection_state.projected_time_seconds, 2
+                    )
+        except Exception:
+            pass
+
         try:
             self.db.insert_projection({
                 "user_id": user_id,
@@ -51,9 +74,14 @@ class DriverService:
                 "midpoint_seconds": projection_state.projected_time_seconds,
                 "range_low_seconds": projection_state.supported_range_low,
                 "range_high_seconds": projection_state.supported_range_high,
+                "range_lower": projection_state.supported_range_low,
+                "range_upper": projection_state.supported_range_high,
                 "baseline_seconds": projection_state.baseline_time_seconds,
                 "improvement_since_baseline": projection_state.total_improvement_seconds,
                 "volatility": projection_state.volatility,
+                "volatility_score": projection_state.volatility,
+                "confidence_score": max(0.0, 1.0 - projection_state.volatility / (projection_state.projected_time_seconds or 1)),
+                "twenty_one_day_change": twenty_one_day_change,
             })
         except Exception:
             logger.exception("Failed to insert projection state for user %s", user_id)

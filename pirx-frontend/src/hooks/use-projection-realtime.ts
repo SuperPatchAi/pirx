@@ -47,13 +47,13 @@ export function useProjectionRealtime(userId: string | null) {
       if (payload.eventType === "INSERT" && payload.new) {
         const row = payload.new as Record<string, unknown>;
         setProjection({
-          projectedTimeSeconds: row.midpoint_seconds as number,
-          rangeLower: row.range_lower as number,
-          rangeUpper: row.range_upper as number,
-          improvementSeconds: row.improvement_since_baseline as number,
-          twentyOneDayChange: row.twenty_one_day_change as number,
-          volatility: row.volatility_score as number,
-          lastUpdated: row.computed_at as string,
+          projectedTimeSeconds: (row.midpoint_seconds ?? 0) as number,
+          rangeLower: (row.range_low_seconds ?? row.range_lower ?? 0) as number,
+          rangeUpper: (row.range_high_seconds ?? row.range_upper ?? 0) as number,
+          improvementSeconds: (row.improvement_since_baseline ?? 0) as number,
+          twentyOneDayChange: (row.twenty_one_day_change ?? 0) as number,
+          volatility: (row.volatility ?? row.volatility_score ?? 0) as number,
+          lastUpdated: (row.computed_at ?? "") as string,
         });
       }
     },

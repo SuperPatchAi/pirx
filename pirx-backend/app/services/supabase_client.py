@@ -5,6 +5,7 @@ from functools import lru_cache
 from supabase import Client, create_client
 
 from app.config import settings
+from app.services.crypto import encrypt_token, decrypt_token
 
 
 @lru_cache(maxsize=1)
@@ -75,8 +76,19 @@ class SupabaseService:
             self.client.table("activities")
             .select("*")
             .eq("user_id", user_id)
-            .gte("started_at", since)
-            .order("started_at", desc=True)
+            .gte("timestamp", since)
+            .order("timestamp", desc=True)
+            .execute()
+        )
+        return result.data or []
+
+    def get_activities_since(self, user_id: str, since_iso: str) -> list[dict]:
+        result = (
+            self.client.table("activities")
+            .select("*")
+            .eq("user_id", user_id)
+            .gte("timestamp", since_iso)
+            .order("timestamp", desc=True)
             .execute()
         )
         return result.data or []
@@ -172,12 +184,23 @@ class SupabaseService:
             .eq("user_id", user_id)
             .execute()
         )
-        return result.data
+        conns = result.data or []
+        for conn in conns:
+            if settings.token_encryption_key and conn.get("access_token"):
+                conn["access_token"] = decrypt_token(conn["access_token"], settings.token_encryption_key)
+            if settings.token_encryption_key and conn.get("refresh_token"):
+                conn["refresh_token"] = decrypt_token(conn["refresh_token"], settings.token_encryption_key)
+        return conns
 
     def upsert_wearable_connection(
         self, user_id: str, provider: str, **kwargs
     ) -> dict:
         data = {"user_id": user_id, "provider": provider, **kwargs}
+        if settings.token_encryption_key:
+            if data.get("access_token"):
+                data["access_token"] = encrypt_token(data["access_token"], settings.token_encryption_key)
+            if data.get("refresh_token"):
+                data["refresh_token"] = encrypt_token(data["refresh_token"], settings.token_encryption_key)
         result = (
             self.client.table("wearable_connections")
             .upsert(data, on_conflict="user_id,provider")
@@ -249,3 +272,91 @@ class SupabaseService:
             .execute()
         )
         return result.data[0] if result.data else data
+
+    # --- Users (bulk queries) ---
+
+    def get_onboarded_users(self) -> list[dict]:
+        result = (
+            self.client.table("users")
+            .select("user_id")
+            .eq("onboarding_completed", True)
+            .execute()
+        )
+        return result.data or []
+
+    # --- Adjunct State ---
+
+    def get_adjunct_state(self, user_id: str) -> list[dict]:
+        result = (
+            self.client.table("adjunct_state")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("computed_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+
+    # --- Feature History (projection_state + driver_state snapshots) ---
+
+    def get_feature_history(self, user_id: str, limit: int = 6) -> list[dict]:
+        """Get recent projection_state rows as feature snapshot proxies."""
+        result = (
+            self.client.table("projection_state")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("computed_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+
+    # --- Model Metrics ---
+
+    def insert_model_metric(self, data: dict) -> dict:
+        result = self.client.table("model_metrics").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    # --- Chat Threads ---
+
+    def create_chat_thread(self, user_id: str, thread_id: str, title: str | None = None) -> dict:
+        data = {"thread_id": thread_id, "user_id": user_id, "title": title}
+        result = self.client.table("chat_threads").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def get_chat_threads(self, user_id: str) -> list[dict]:
+        result = (
+            self.client.table("chat_threads")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+
+    def get_chat_thread(self, thread_id: str) -> dict | None:
+        result = (
+            self.client.table("chat_threads")
+            .select("*")
+            .eq("thread_id", thread_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def delete_chat_thread(self, thread_id: str) -> None:
+        self.client.table("chat_threads").delete().eq("thread_id", thread_id).execute()
+
+    def insert_chat_message(self, thread_id: str, role: str, content: str) -> dict:
+        data = {"thread_id": thread_id, "role": role, "content": content}
+        result = self.client.table("chat_messages").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def get_chat_messages(self, thread_id: str) -> list[dict]:
+        result = (
+            self.client.table("chat_messages")
+            .select("*")
+            .eq("thread_id", thread_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return result.data or []

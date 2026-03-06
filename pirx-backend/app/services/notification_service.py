@@ -141,7 +141,7 @@ class NotificationService:
         )
 
     def dispatch(self, user_id: str, payload: NotificationPayload) -> dict:
-        """Store notification in log and (future) trigger push delivery."""
+        """Store notification in log and trigger push delivery."""
         result = self.db.insert_notification(
             user_id=user_id,
             notification_type=payload.notification_type,
@@ -149,8 +149,64 @@ class NotificationService:
             body=payload.body,
             deep_link=payload.deep_link,
         )
-        # TODO: Trigger actual push notification via web-push
+        self._send_push(user_id, payload)
         return result
+
+    def _send_push(self, user_id: str, payload: NotificationPayload):
+        """Send push notification to all user subscriptions."""
+        from app.config import settings
+
+        if not settings.vapid_private_key:
+            return
+
+        try:
+            import json
+
+            from pywebpush import WebPushException, webpush
+
+            subs = (
+                self.db.client.table("push_subscriptions")
+                .select("*")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if not subs.data:
+                return
+
+            push_data = json.dumps(
+                {
+                    "title": payload.title,
+                    "body": payload.body,
+                    "url": payload.deep_link,
+                }
+            )
+
+            vapid_claims = {
+                "sub": settings.vapid_subject,
+            }
+
+            for sub in subs.data:
+                try:
+                    webpush(
+                        subscription_info={
+                            "endpoint": sub["endpoint"],
+                            "keys": {
+                                "p256dh": sub["p256dh"],
+                                "auth": sub["auth"],
+                            },
+                        },
+                        data=push_data,
+                        vapid_private_key=settings.vapid_private_key,
+                        vapid_claims=vapid_claims,
+                    )
+                except WebPushException:
+                    self.db.client.table("push_subscriptions").delete().eq(
+                        "id", sub["id"]
+                    ).execute()
+                except Exception:
+                    pass
+        except ImportError:
+            pass
 
     def get_user_notifications(self, user_id: str, limit: int = 20) -> list[dict]:
         """Get recent notifications for a user."""

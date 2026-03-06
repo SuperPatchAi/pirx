@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -8,8 +10,26 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
+    const { error, data } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && data.session) {
+      try {
+        const res = await fetch(`${API_URL}/account/baseline`, {
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+            "Content-Type": "application/json",
+          },
+        });
+        if (res.ok) {
+          const baseline = await res.json();
+          const isNewUser =
+            !baseline.race_date && baseline.source === "auto";
+          if (isNewUser) {
+            return NextResponse.redirect(`${origin}/onboarding/1`);
+          }
+        }
+      } catch {
+        // If the check fails, fall through to dashboard
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

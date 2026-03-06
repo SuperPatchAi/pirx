@@ -2,7 +2,9 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 
 interface EventCard {
   event: string;
@@ -10,13 +12,6 @@ interface EventCard {
   projectedTime: string;
   change: string;
 }
-
-const MOCK_EVENTS: EventCard[] = [
-  { event: "1500", displayName: "1500m", projectedTime: "5:42", change: "-3s" },
-  { event: "3000", displayName: "3K", projectedTime: "12:18", change: "-8s" },
-  { event: "5000", displayName: "5K", projectedTime: "20:42", change: "-5s" },
-  { event: "10000", displayName: "10K", projectedTime: "43:15", change: "-12s" },
-];
 
 interface EventSwiperProps {
   apiData?: EventCard[] | null;
@@ -29,7 +24,21 @@ export function EventSwiper({
   selectedEvent,
   onEventSelect,
 }: EventSwiperProps) {
-  const events = apiData ?? MOCK_EVENTS;
+  const events = apiData ?? [];
+
+  if (events.length === 0) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground">All Events</h3>
+        <EmptyState
+          icon={CalendarDays}
+          message="No event projections yet"
+          submessage="Sync data to see all events"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-muted-foreground">All Events</h3>

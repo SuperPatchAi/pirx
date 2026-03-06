@@ -61,3 +61,4 @@ celerybeat.pid
 # Misc
 *.bak
 *.tmp
+supabase/.temp/

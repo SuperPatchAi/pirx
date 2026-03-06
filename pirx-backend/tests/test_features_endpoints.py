@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -18,6 +19,19 @@ def mock_auth():
     app.dependency_overrides[get_current_user] = _mock_user
     yield
     app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture(autouse=True)
+def mock_supabase():
+    with patch("app.services.supabase_client.get_supabase_client") as mock_fn:
+        mock_client = MagicMock()
+        mock_fn.return_value = mock_client
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        yield mock_client
 
 
 class TestZoneDistribution:
@@ -112,7 +126,6 @@ class TestLearningInsights:
         r = client.get("/features/learning")
         data = r.json()
         assert isinstance(data["insights"], list)
-        assert len(data["insights"]) > 0
 
     def test_insight_fields(self, client):
         r = client.get("/features/learning")
@@ -141,32 +154,9 @@ class TestAdjunctAnalysis:
         r = client.get("/features/adjuncts")
         assert r.status_code == 200
 
-    def test_adjuncts_count(self, client):
+    def test_adjuncts_list(self, client):
         r = client.get("/features/adjuncts")
-        assert len(r.json()["adjuncts"]) == 3
-
-    def test_adjunct_fields(self, client):
-        r = client.get("/features/adjuncts")
-        for adj in r.json()["adjuncts"]:
-            assert "name" in adj
-            assert "sessions_analyzed" in adj
-            assert "median_projection_delta_seconds" in adj
-            assert "hr_drift_change_pct" in adj
-            assert "volatility_change" in adj
-            assert "status" in adj
-            assert "confidence" in adj
-
-    def test_adjunct_status_values(self, client):
-        r = client.get("/features/adjuncts")
-        for adj in r.json()["adjuncts"]:
-            assert adj["status"] in ("observational", "emerging", "supported")
-
-    def test_adjunct_names(self, client):
-        r = client.get("/features/adjuncts")
-        names = [a["name"] for a in r.json()["adjuncts"]]
-        assert "Altitude Training" in names
-        assert "Strength Training" in names
-        assert "Heat Acclimation" in names
+        assert isinstance(r.json()["adjuncts"], list)
 
 
 class TestHonestState:
@@ -225,9 +215,8 @@ class TestAllProjectionsEndpoint:
         r = client.get("/projection/all")
         assert r.status_code == 200
         data = r.json()
-        assert "events" in data
-        for event in ["1500", "3000", "5000", "10000"]:
-            assert event in data["events"]
+        assert "projections" in data
+        assert isinstance(data["projections"], list)
 
 
 class TestSyncStatusEndpoint:
@@ -237,3 +226,123 @@ class TestSyncStatusEndpoint:
         data = r.json()
         assert "connections" in data
         assert isinstance(data["connections"], list)
+
+
+# ---------------------------------------------------------------------------
+# D9: Real data vs fallback tests
+# ---------------------------------------------------------------------------
+
+
+class TestZoneDistributionWithRealData:
+    """Verify zone endpoint works with mocked real activities (with hr_zones)."""
+
+    @patch("app.routers.features.SupabaseService")
+    def test_zones_with_activity_data(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_recent_activities.return_value = [
+            {"hr_zones": [600, 1200, 300, 180, 120], "timestamp": "2026-03-01T08:00:00Z"},
+            {"hr_zones": [400, 900, 200, 150, 50], "timestamp": "2026-02-28T08:00:00Z"},
+        ]
+        mock_cls.return_value = inst
+
+        r = client.get("/features/zones")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["zones"]) == 5
+
+        total = sum(z["time_pct"] for z in data["zones"])
+        assert abs(total - 1.0) < 0.01
+
+        z1_pct = data["distribution_21d"]["z1"]
+        z2_pct = data["distribution_21d"]["z2"]
+        assert z1_pct > 0
+        assert z2_pct > 0
+
+    @patch("app.routers.features.SupabaseService")
+    def test_zones_fallback_no_activities(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_recent_activities.return_value = []
+        mock_cls.return_value = inst
+
+        r = client.get("/features/zones")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["distribution_21d"]["z2"] == 0.35
+        assert data["methodology"] in ("Pyramidal", "Polarized", "Mixed")
+
+
+class TestRunningEconomyWithRealData:
+    """Verify economy endpoint with mocked real activities (matched HR band)."""
+
+    @patch("app.routers.features.SupabaseService")
+    def test_economy_with_matched_activities(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_recent_activities.return_value = [
+            {"avg_hr": 148, "avg_pace_sec_per_km": 290, "timestamp": "2026-03-01"},
+            {"avg_hr": 150, "avg_pace_sec_per_km": 295, "timestamp": "2026-02-28"},
+            {"avg_hr": 152, "avg_pace_sec_per_km": 300, "timestamp": "2026-02-27"},
+            {"avg_hr": 149, "avg_pace_sec_per_km": 305, "timestamp": "2026-02-26"},
+            {"avg_hr": 151, "avg_pace_sec_per_km": 310, "timestamp": "2026-02-25"},
+            {"avg_hr": 147, "avg_pace_sec_per_km": 308, "timestamp": "2026-02-24"},
+        ]
+        mock_cls.return_value = inst
+
+        r = client.get("/features/economy")
+        assert r.status_code == 200
+        data = r.json()
+        band = data["matched_hr_band"]
+        assert "hr_range" in band
+        expected_gain = band["baseline_pace_sec_km"] - band["current_pace_sec_km"]
+        assert abs(band["efficiency_gain_sec_km"] - expected_gain) < 0.2
+
+    @patch("app.routers.features.SupabaseService")
+    def test_economy_fallback_no_matching_activities(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_recent_activities.return_value = [
+            {"avg_hr": 120, "avg_pace_sec_per_km": 400, "timestamp": "2026-03-01"},
+        ]
+        mock_cls.return_value = inst
+
+        r = client.get("/features/economy")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["matched_hr_band"]["baseline_pace_sec_km"] == 310
+        assert len(data["intensity_levels"]) == 3
+
+
+class TestAdjunctAnalysisWithRealData:
+    """Verify adjunct endpoint with real DB rows vs mock fallback."""
+
+    @patch("app.routers.features.SupabaseService")
+    def test_adjuncts_with_db_rows(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_adjunct_state.return_value = [
+            {
+                "adjunct_name": "Ice Baths",
+                "sessions_analyzed": 5,
+                "median_projection_delta_seconds": -2.0,
+                "hr_drift_change_pct": -0.5,
+                "volatility_change": 0.1,
+                "status": "observational",
+                "confidence": 0.4,
+            },
+        ]
+        mock_cls.return_value = inst
+
+        r = client.get("/features/adjuncts")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["adjuncts"]) == 1
+        assert data["adjuncts"][0]["name"] == "Ice Baths"
+
+    @patch("app.routers.features.SupabaseService")
+    def test_adjuncts_fallback_empty_db(self, mock_cls, client):
+        inst = MagicMock()
+        inst.get_adjunct_state.return_value = []
+        mock_cls.return_value = inst
+
+        r = client.get("/features/adjuncts")
+        assert r.status_code == 200
+        data = r.json()
+        assert isinstance(data["adjuncts"], list)
+        assert len(data["adjuncts"]) == 0

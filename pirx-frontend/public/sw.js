@@ -1,42 +1,84 @@
 // PIRX Service Worker for Push Notifications & Offline Caching
-const CACHE_NAME = "pirx-v1";
-const PROJECTION_CACHE = "pirx-projections";
+const CACHE_NAME = "pirx-v2";
+const API_CACHE = "pirx-api-v1";
+
+const STALE_WHILE_REVALIDATE_ROUTES = [
+  "/projection",
+  "/drivers",
+  "/readiness",
+  "/features/zones",
+  "/metrics/weekly",
+];
+
+const OFFLINE_FALLBACK = new Response(
+  JSON.stringify({ offline: true, message: "You are offline. Data will refresh when connectivity returns." }),
+  { headers: { "Content-Type": "application/json" } }
+);
 
 self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(["/", "/dashboard", "/offline"])
+    ).catch(() => {})
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  const KEEP = [CACHE_NAME, API_CACHE];
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((k) => k !== CACHE_NAME && k !== PROJECTION_CACHE)
-            .map((k) => caches.delete(k))
+          keys.filter((k) => !KEEP.includes(k)).map((k) => caches.delete(k))
         )
       )
       .then(() => self.clients.claim())
   );
 });
 
+function shouldCacheApiRoute(pathname) {
+  return STALE_WHILE_REVALIDATE_ROUTES.some((route) => pathname.includes(route));
+}
+
+function staleWhileRevalidate(request) {
+  return caches.open(API_CACHE).then((cache) =>
+    cache.match(request).then((cached) => {
+      const networkFetch = fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            cache.put(request, response.clone());
+          }
+          return response;
+        })
+        .catch(() => cached || OFFLINE_FALLBACK.clone());
+
+      return cached || networkFetch;
+    })
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  if (url.pathname.includes("/projection") && event.request.method === "GET") {
+  if (event.request.method !== "GET") return;
+
+  if (shouldCacheApiRoute(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(event.request));
+    return;
+  }
+
+  if (url.origin === self.location.origin) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(PROJECTION_CACHE).then((cache) => {
-            cache.put(event.request, clone);
-          });
-          return response;
+      caches.match(event.request).then((cached) =>
+        cached || fetch(event.request).catch(() => {
+          if (event.request.mode === "navigate") {
+            return caches.match("/offline") || OFFLINE_FALLBACK.clone();
+          }
+          return OFFLINE_FALLBACK.clone();
         })
-        .catch(() => {
-          return caches.match(event.request);
-        })
+      )
     );
     return;
   }

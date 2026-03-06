@@ -3,6 +3,7 @@
 import { useRouter, useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,18 +92,18 @@ function WelcomeStep({
   );
 }
 
-// TODO: Wire to real OAuth (Strava/Terra) when available
-const WEARABLES = [
-  { id: "strava", name: "Strava", icon: Activity, connected: false },
-  { id: "garmin", name: "Garmin", icon: Watch, connected: false },
-  {
-    id: "apple_health",
-    name: "Apple Health",
-    icon: Smartphone,
-    connected: false,
-  },
-  { id: "fitbit", name: "Fitbit", icon: Activity, connected: false },
+const WEARABLE_PROVIDERS = [
+  { id: "strava", name: "Strava", icon: Activity, comingSoon: false },
+  { id: "garmin", name: "Garmin", icon: Watch, comingSoon: true },
+  { id: "apple_health", name: "Apple Health", icon: Smartphone, comingSoon: true },
+  { id: "fitbit", name: "Fitbit", icon: Activity, comingSoon: true },
 ];
+
+interface SyncConnection {
+  provider: string;
+  is_active: boolean;
+  last_sync: string | null;
+}
 
 function ConnectStep({
   onNext,
@@ -111,16 +112,52 @@ function ConnectStep({
   onNext: () => void;
   onBack: () => void;
 }) {
-  const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [connections, setConnections] = useState<Map<string, SyncConnection>>(new Map());
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
 
-  const toggleConnect = (id: string) => {
-    setConnected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch("/sync/status");
+        if (!cancelled && data.connections) {
+          const map = new Map<string, SyncConnection>();
+          data.connections.forEach((c: SyncConnection) => map.set(c.provider, c));
+          setConnections(map);
+        }
+      } catch {
+        // API may not be reachable during onboarding — continue with empty state
+      }
+      if (!cancelled) setLoadingStatus(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleConnect = async (providerId: string) => {
+    const provider = WEARABLE_PROVIDERS.find((p) => p.id === providerId);
+    if (!provider || provider.comingSoon) return;
+
+    if (providerId === "strava") {
+      setConnecting("strava");
+      try {
+        const redirectUri = window.location.origin + "/auth/callback?next=/onboarding/3";
+        const data = await apiFetch(`/sync/connect/strava?redirect_uri=${encodeURIComponent(redirectUri)}`);
+        if (data.authorization_url) {
+          window.location.href = data.authorization_url;
+        }
+      } catch {
+        setConnecting(null);
+      }
+    }
   };
+
+  const isConnected = (id: string) => {
+    const conn = connections.get(id);
+    return conn?.is_active ?? false;
+  };
+
+  const hasAnyConnection = Array.from(connections.values()).some((c) => c.is_active);
 
   return (
     <motion.div
@@ -140,28 +177,45 @@ function ConnectStep({
       </div>
 
       <div className="space-y-3">
-        {WEARABLES.map((w) => {
+        {WEARABLE_PROVIDERS.map((w) => {
           const Icon = w.icon;
-          const isConnected = connected.has(w.id);
+          const connected = isConnected(w.id);
           return (
             <Card
               key={w.id}
-              className={`cursor-pointer transition-all ${
-                isConnected ? "border-primary bg-primary/5" : ""
+              className={`transition-all ${
+                connected
+                  ? "border-primary bg-primary/5"
+                  : w.comingSoon
+                    ? "opacity-60"
+                    : "cursor-pointer"
               }`}
-              onClick={() => toggleConnect(w.id)}
+              onClick={() => !w.comingSoon && handleConnect(w.id)}
             >
               <CardContent className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <span className="font-medium">{w.name}</span>
+                  <div>
+                    <span className="font-medium">{w.name}</span>
+                    {connected && connections.get(w.id)?.last_sync && (
+                      <p className="text-xs text-muted-foreground">
+                        Last sync: {new Date(connections.get(w.id)!.last_sync!).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {isConnected ? (
+                {connected ? (
                   <Badge variant="default">
                     <Check className="mr-1 h-3 w-3" /> Connected
                   </Badge>
+                ) : w.comingSoon ? (
+                  <Badge variant="outline">Coming Soon</Badge>
+                ) : connecting === w.id ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                ) : loadingStatus ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 ) : (
                   <Button variant="outline" size="sm">
                     Connect
@@ -180,11 +234,14 @@ function ConnectStep({
         <Button
           onClick={onNext}
           className="flex-1"
-          disabled={connected.size === 0}
+          disabled={!hasAnyConnection && connecting === null}
         >
           Continue <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
+      <Button variant="link" onClick={onNext} className="w-full text-muted-foreground">
+        Skip for now
+      </Button>
     </motion.div>
   );
 }
@@ -192,20 +249,39 @@ function ConnectStep({
 function LoadingStep({ onNext }: { onNext: () => void }) {
   const [progress, setProgress] = useState(0);
 
-  // TODO: Poll API endpoint for backfill progress instead of mock
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>;
-    intervalId = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          clearInterval(intervalId);
-          setTimeout(onNext, 500);
-          return 100;
+    let cancelled = false;
+    let fakeProgress = 0;
+
+    const poll = async () => {
+      while (!cancelled && fakeProgress < 100) {
+        try {
+          const data = await apiFetch("/sync/status");
+          const hasConnection = data.connections?.some((c: { connected: boolean }) => c.connected);
+          if (hasConnection) {
+            fakeProgress = Math.min(fakeProgress + 15, 95);
+          } else {
+            fakeProgress = Math.min(fakeProgress + 5, 90);
+          }
+        } catch {
+          fakeProgress = Math.min(fakeProgress + 3, 90);
         }
-        return p + 2;
-      });
-    }, 80);
-    return () => clearInterval(intervalId);
+        if (!cancelled) setProgress(fakeProgress);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (!cancelled) {
+        setProgress(100);
+        setTimeout(onNext, 500);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      setProgress(100);
+      if (!cancelled) setTimeout(onNext, 500);
+    }, 15000);
+
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [onNext]);
 
   const messages = [
@@ -256,9 +332,53 @@ function BaselineStep({
   const [event, setEvent] = useState("5000");
   const [minutes, setMinutes] = useState("20");
   const [seconds, setSeconds] = useState("00");
+  const [detected, setDetected] = useState<{ event: string; time: string; date: string; time_seconds: number } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: Fetch detected baseline from API
-  const detected = { event: "5000", time: "20:42", date: "Feb 15, 2026" };
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiFetch("/onboarding/detect-baseline", { method: "POST" });
+        if (data.baseline_source !== "cold_start") {
+          const totalSec = data.baseline_time_seconds;
+          const m = Math.floor(totalSec / 60);
+          const s = Math.floor(totalSec % 60);
+          setDetected({
+            event: data.baseline_event,
+            time: `${m}:${s.toString().padStart(2, "0")}`,
+            date: data.detected_races?.[0]?.timestamp?.slice(0, 10) || "Recent",
+            time_seconds: totalSec,
+          });
+          setEvent(data.baseline_event);
+          setMinutes(String(m));
+          setSeconds(String(s).padStart(2, "0"));
+        }
+      } catch {}
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleConfirm = async () => {
+    const timeSec = mode === "detected" && detected
+      ? detected.time_seconds
+      : parseInt(minutes) * 60 + parseInt(seconds);
+    const ev = mode === "detected" && detected ? detected.event : event;
+    try {
+      await apiFetch("/onboarding/set-baseline", {
+        method: "POST",
+        body: JSON.stringify({ event: ev, time_seconds: timeSec, source: mode === "detected" ? "race_history" : "manual" }),
+      });
+    } catch {}
+    onNext();
+  };
+
+  if (loading) {
+    return (
+      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -271,11 +391,11 @@ function BaselineStep({
       <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight">Your Baseline</h2>
         <p className="text-sm text-muted-foreground">
-          We found a recent race result. Confirm or enter your own.
+          {detected ? "We found a recent race result. Confirm or enter your own." : "Enter a recent race time to set your baseline."}
         </p>
       </div>
 
-      {mode === "detected" && (
+      {mode === "detected" && detected && (
         <Card className="border-primary bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
@@ -287,7 +407,7 @@ function BaselineStep({
               <span className="text-3xl font-bold tabular-nums">
                 {detected.time}
               </span>
-              <Badge variant="secondary">5K</Badge>
+              <Badge variant="secondary">{detected.event === "5000" ? "5K" : detected.event === "10000" ? "10K" : detected.event + "m"}</Badge>
             </div>
             <p className="text-xs text-muted-foreground">{detected.date}</p>
           </CardContent>
@@ -295,13 +415,15 @@ function BaselineStep({
       )}
 
       <div className="flex gap-2">
-        <Button
-          variant={mode === "detected" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setMode("detected")}
-        >
-          Use Detected
-        </Button>
+        {detected && (
+          <Button
+            variant={mode === "detected" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMode("detected")}
+          >
+            Use Detected
+          </Button>
+        )}
         <Button
           variant={mode === "manual" ? "default" : "outline"}
           size="sm"
@@ -324,6 +446,8 @@ function BaselineStep({
               <option value="3000">3000m</option>
               <option value="5000">5K</option>
               <option value="10000">10K</option>
+              <option value="21097">Half Marathon</option>
+              <option value="42195">Marathon</option>
             </select>
           </div>
           <div className="flex gap-2 items-end">
@@ -356,7 +480,7 @@ function BaselineStep({
         <Button variant="ghost" onClick={onBack} className="flex-1">
           <ChevronLeft className="mr-2 h-4 w-4" /> Back
         </Button>
-        <Button onClick={onNext} className="flex-1">
+        <Button onClick={handleConfirm} className="flex-1">
           Confirm Baseline <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
@@ -364,15 +488,51 @@ function BaselineStep({
   );
 }
 
-// TODO: Fetch first projection from API
-const MOCK_PROJECTIONS = [
-  { event: "1500m", time: "5:42", change: "-3s" },
-  { event: "3K", time: "12:18", change: "-8s" },
-  { event: "5K", time: "20:42", change: "baseline" },
-  { event: "10K", time: "43:15", change: "-12s" },
-];
-
 function RevealStep({ onFinish }: { onFinish: () => void }) {
+  const [projections, setProjections] = useState<Array<{ event: string; time: string; change: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiFetch("/onboarding/generate-projection", {
+          method: "POST",
+          body: JSON.stringify({ primary_event: "5000" }),
+        });
+        if (data.all_projections) {
+          const eventLabels: Record<string, string> = { "1500": "1500m", "3000": "3K", "5000": "5K", "10000": "10K", "21097": "Half Marathon", "42195": "Marathon" };
+          const items = Object.entries(data.all_projections).map(([key, proj]: [string, any]) => {
+            const sec = proj.midpoint_seconds;
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            let timeStr = `${m}:${s.toString().padStart(2, "0")}`;
+            if (sec >= 3600) {
+              const h = Math.floor(sec / 3600);
+              const rm = Math.floor((sec % 3600) / 60);
+              const rs = Math.floor(sec % 60);
+              timeStr = `${h}:${rm.toString().padStart(2, "0")}:${rs.toString().padStart(2, "0")}`;
+            }
+            return { event: eventLabels[key] || key, time: timeStr, change: "baseline" };
+          });
+          setProjections(items);
+        }
+      } catch {
+        setProjections([
+          { event: "5K", time: "25:00", change: "baseline" },
+        ]);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       variants={pageVariants}
@@ -389,7 +549,7 @@ function RevealStep({ onFinish }: { onFinish: () => void }) {
       </div>
 
       <div className="space-y-3">
-        {MOCK_PROJECTIONS.map((p, i) => (
+        {projections.map((p, i) => (
           <motion.div
             key={p.event}
             initial={{ opacity: 0, y: 20 }}

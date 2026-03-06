@@ -33,7 +33,7 @@ FEATURE_DOMAINS = {
 
 
 class FeatureService:
-    """Computes 27 rolling-window features across 5 domains from activity data."""
+    """Computes 25 rolling-window features across 5 domains from activity data."""
 
     @staticmethod
     def compute_all_features(
@@ -343,8 +343,9 @@ class FeatureService:
             def trend_slope(vals: list) -> float | None:
                 if len(vals) < 3:
                     return None
-                recent = vals[:7] if len(vals) >= 7 else vals
-                older = vals[7:] if len(vals) >= 7 else vals[:len(vals)//2]
+                mid = len(vals) // 2
+                recent = vals[:mid]
+                older = vals[mid:]
                 if not recent or not older:
                     return None
                 return float(np.mean(recent) - np.mean(older))

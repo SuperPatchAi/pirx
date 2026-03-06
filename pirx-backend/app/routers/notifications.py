@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user
 from app.services.notification_service import TRIGGER_TYPES, NotificationService
+from app.services.supabase_client import SupabaseService
 
 router = APIRouter()
 
@@ -22,6 +23,44 @@ class NotificationResponse(BaseModel):
 class NotificationsListResponse(BaseModel):
     notifications: list[NotificationResponse]
     unread_count: int
+
+
+class PushSubscription(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@router.post("/subscribe")
+async def subscribe_push(
+    body: PushSubscription, user: dict = Depends(get_current_user)
+):
+    db = SupabaseService()
+    try:
+        db.client.table("push_subscriptions").upsert(
+            {
+                "user_id": user["user_id"],
+                "endpoint": body.endpoint,
+                "p256dh": body.keys.get("p256dh", ""),
+                "auth": body.keys.get("auth", ""),
+            }
+        ).execute()
+        return {"status": "subscribed"}
+    except Exception:
+        return {"status": "error"}
+
+
+@router.post("/unsubscribe")
+async def unsubscribe_push(
+    body: PushSubscription, user: dict = Depends(get_current_user)
+):
+    db = SupabaseService()
+    try:
+        db.client.table("push_subscriptions").delete().eq(
+            "user_id", user["user_id"]
+        ).eq("endpoint", body.endpoint).execute()
+        return {"status": "unsubscribed"}
+    except Exception:
+        return {"status": "error"}
 
 
 @router.get("", response_model=NotificationsListResponse)

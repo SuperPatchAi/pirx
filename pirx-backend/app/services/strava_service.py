@@ -88,6 +88,52 @@ class StravaService:
         response.raise_for_status()
         return response.json()
 
+    async def get_activity_streams(
+        self, access_token: str, activity_id: int
+    ) -> Optional[dict]:
+        """Fetch heartrate and time streams for an activity."""
+        try:
+            response = await self.client.get(
+                f"{STRAVA_API_BASE}/activities/{activity_id}/streams",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"keys": "heartrate,time", "key_type": "stream"},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                streams = {s["type"]: s["data"] for s in data}
+                return streams
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def compute_hr_zones(hr_stream: list[int], max_hr: int = 190) -> list[float]:
+        """Compute time-in-zone (seconds) from HR stream data.
+
+        Zones based on % of max HR:
+        Z1: < 60%, Z2: 60-70%, Z3: 70-80%, Z4: 80-90%, Z5: 90-100%
+        Each sample represents ~1 second.
+        """
+        zone_thresholds = [
+            max_hr * 0.60,
+            max_hr * 0.70,
+            max_hr * 0.80,
+            max_hr * 0.90,
+        ]
+        zones = [0.0] * 5
+        for hr in hr_stream:
+            if hr < zone_thresholds[0]:
+                zones[0] += 1
+            elif hr < zone_thresholds[1]:
+                zones[1] += 1
+            elif hr < zone_thresholds[2]:
+                zones[2] += 1
+            elif hr < zone_thresholds[3]:
+                zones[3] += 1
+            else:
+                zones[4] += 1
+        return zones
+
     @staticmethod
     def normalize_activity(strava_activity: dict) -> NormalizedActivity:
         """Convert a Strava activity to PIRX normalized format."""

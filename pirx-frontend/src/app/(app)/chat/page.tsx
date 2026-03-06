@@ -14,6 +14,7 @@ import {
   Zap,
   Heart,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -34,13 +35,35 @@ const SUGGESTION_CHIPS = [
   { label: "How is my sleep affecting readiness?", icon: Heart },
 ];
 
+const THREAD_KEY = "pirx_chat_thread_id";
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(THREAD_KEY);
+    if (stored) setThreadId(stored);
+    else setHistoryLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (threadId) {
+      localStorage.setItem(THREAD_KEY, threadId);
+    }
+  }, [threadId]);
+
+  const handleNewChat = useCallback(() => {
+    localStorage.removeItem(THREAD_KEY);
+    setThreadId(null);
+    setMessages([]);
+    setHistoryLoaded(true);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,9 +73,8 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Load chat history when threadId is available
   useEffect(() => {
-    if (!threadId) return;
+    if (!threadId || historyLoaded) return;
     async function loadHistory() {
       try {
         const { apiFetch } = await import("@/lib/api");
@@ -79,10 +101,12 @@ export default function ChatPage() {
         }
       } catch {
         /* history load failure is non-critical */
+      } finally {
+        setHistoryLoaded(true);
       }
     }
     loadHistory();
-  }, [threadId]);
+  }, [threadId, historyLoaded]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -215,11 +239,11 @@ export default function ChatPage() {
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <Link href="/dashboard">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Go back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
             <Sparkles className="h-4 w-4 text-primary-foreground" />
           </div>
@@ -230,6 +254,16 @@ export default function ChatPage() {
             </p>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={handleNewChat}
+          title="New Chat"
+          aria-label="New conversation"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Messages */}
@@ -333,6 +367,7 @@ export default function ChatPage() {
             className="h-10 w-10 rounded-xl shrink-0"
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isLoading}
+            aria-label="Send message"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

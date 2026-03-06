@@ -1,6 +1,4 @@
-from datetime import datetime, timedelta, timezone
 from typing import Optional
-import random
 
 import logging
 
@@ -34,6 +32,13 @@ class PhysiologyEntry(BaseModel):
     iron: Optional[float] = None
     vitamin_d: Optional[float] = None
     testosterone: Optional[float] = None
+
+
+class MindsetCheckIn(BaseModel):
+    confidence_score: Optional[float] = Field(None, ge=1, le=10)
+    fatigue_score: Optional[float] = Field(None, ge=1, le=10)
+    focus_score: Optional[float] = Field(None, ge=1, le=10)
+    notes: Optional[str] = None
 
 
 class PhysiologyResponse(BaseModel):
@@ -99,33 +104,41 @@ async def get_latest_physiology(user: dict = Depends(get_current_user)):
     return _generate_mock_latest()
 
 
+@router.post("/mindset")
+async def submit_mindset_checkin(
+    body: MindsetCheckIn,
+    user: dict = Depends(get_current_user),
+):
+    """Submit a daily mindset check-in."""
+    db = SupabaseService()
+    data = body.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="At least one score is required")
+    data["user_id"] = user["user_id"]
+    data["source"] = "mindset_checkin"
+    try:
+        result = db.client.table("physiology").insert(data).execute()
+        return {
+            "status": "recorded",
+            "entry_id": result.data[0]["entry_id"] if result.data else None,
+        }
+    except Exception:
+        logger.exception("Failed to save mindset check-in for user %s", user["user_id"])
+        raise HTTPException(status_code=500, detail="Failed to save mindset check-in")
+
+
 def _generate_mock_trends(days: int) -> list[dict]:
-    """Generate mock trend data for development."""
-    entries = []
-    now = datetime.now(timezone.utc)
-    for i in range(days):
-        date = now - timedelta(days=days - 1 - i)
-        entries.append(
-            {
-                "entry_id": f"mock-{i}",
-                "timestamp": date.isoformat(),
-                "source": "wearable",
-                "resting_hr": 52 + random.randint(-3, 3),
-                "hrv": 45 + random.uniform(-8, 8),
-                "sleep_score": 72 + random.uniform(-12, 12),
-            }
-        )
-    return entries
+    return []
 
 
 def _generate_mock_latest() -> dict:
     return {
-        "entry_id": "mock-latest",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "source": "wearable",
-        "resting_hr": 52,
-        "hrv": 48.0,
-        "sleep_score": 75.0,
+        "entry_id": None,
+        "timestamp": None,
+        "source": None,
+        "resting_hr": None,
+        "hrv": None,
+        "sleep_score": None,
         "confidence_score": None,
         "fatigue_score": None,
         "focus_score": None,

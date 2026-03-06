@@ -30,40 +30,22 @@ def _format_time(seconds: float) -> str:
 
 
 def _mock_projection(event: str) -> ProjectionResponse:
-    projected = 1182.0
-    range_low = 1155.0
-    range_high = 1208.0
     return ProjectionResponse(
         event=event,
-        projected_time_seconds=projected,
-        projected_time_display=_format_time(projected),
-        supported_range_low=range_low,
-        supported_range_high=range_high,
-        supported_range_display=f"{_format_time(range_low)} – {_format_time(range_high)}",
-        baseline_time_seconds=1260.0,
-        total_improvement_seconds=78.0,
-        volatility=2.3,
-        last_updated="2026-03-05T12:00:00Z",
+        projected_time_seconds=0,
+        projected_time_display="—",
+        supported_range_low=0,
+        supported_range_high=0,
+        supported_range_display="—",
+        baseline_time_seconds=0,
+        total_improvement_seconds=0,
+        volatility=0,
+        last_updated=None,
     )
 
 
 def _mock_projection_history(event: str, days: int) -> ProjectionHistoryResponse:
-    from datetime import datetime, timedelta
-
-    history = []
-    base_time = 1260.0
-    for i in range(min(days, 30)):
-        date = datetime(2026, 3, 5) - timedelta(days=i)
-        improvement = max(0, i * 2.5)
-        history.append(
-            ProjectionHistoryPoint(
-                date=date.strftime("%Y-%m-%d"),
-                projected_time_seconds=round(base_time - improvement, 1),
-                event=event,
-            )
-        )
-    history.reverse()
-    return ProjectionHistoryResponse(event=event, days=days, history=history)
+    return ProjectionHistoryResponse(event=event, days=days, history=[])
 
 
 @router.get("", response_model=ProjectionResponse)
@@ -133,29 +115,36 @@ async def get_projection_history(
     return _mock_projection_history(event, days)
 
 
+EVENT_DISPLAY_NAMES = {
+    "1500": "1500m", "3000": "3K", "5000": "5K", "10000": "10K",
+    "21097": "Half Marathon", "42195": "Marathon",
+}
+
+
 @router.get("/all")
 async def get_all_projections(user: dict = Depends(get_current_user)):
     """Get projections across all supported events."""
-    events = ["1500", "3000", "5000", "10000"]
-    results = {}
+    events = ["1500", "3000", "5000", "10000", "21097", "42195"]
+    projections = []
     db = SupabaseService()
     for event in events:
         try:
             projection = db.get_latest_projection(user["user_id"], event)
             if projection:
                 midpoint = projection["midpoint_seconds"]
-                results[event] = {
+                projections.append({
+                    "event": event,
+                    "display_name": EVENT_DISPLAY_NAMES.get(event, event),
                     "projected_time_seconds": midpoint,
                     "projected_time_display": _format_time(midpoint),
                     "supported_range_low": projection.get("range_low_seconds", midpoint * 0.97),
                     "supported_range_high": projection.get("range_high_seconds", midpoint * 1.03),
                     "total_improvement_seconds": projection.get("baseline_seconds", midpoint + 78) - midpoint,
-                }
-            else:
-                results[event] = None
+                    "twenty_one_day_change": projection.get("twenty_one_day_change", 0),
+                })
         except Exception:
-            results[event] = None
-    return {"events": results}
+            pass
+    return {"projections": projections}
 
 
 @router.get("/trajectory", response_model=TrajectoryResponse)
@@ -177,32 +166,29 @@ async def get_trajectory(
 
     try:
         engine = TrajectoryEngine()
-        # TODO: Load real features from DB once feature service is wired
-        mock_features: dict = {
-            "rolling_distance_7d": 35000,
-            "rolling_distance_21d": 30000,
-            "rolling_distance_42d": 28000,
-            "rolling_distance_90d": 25000,
-            "threshold_density_min_week": 20,
-            "speed_exposure_min_week": 8,
-            "z1_pct": 0.40,
-            "z2_pct": 0.30,
-            "z4_pct": 0.12,
-            "z5_pct": 0.05,
-            "weekly_load_stddev": 4000,
-            "block_variance": 3000,
-            "session_density_stability": 0.8,
-            "acwr_4w": 1.1,
-            "hr_drift_sustained": 0.04,
-            "late_session_pace_decay": 0.03,
-            "matched_hr_band_pace": 270,
-        }
+        activities_raw = db.get_recent_activities(user["user_id"], days=90)
+        if activities_raw:
+            from app.models.activities import NormalizedActivity
+            from app.services.feature_service import FeatureService
+            activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
+            real_features = FeatureService.compute_all_features(activities)
+        else:
+            real_features = {
+                "rolling_distance_7d": 35000, "rolling_distance_21d": 30000,
+                "rolling_distance_42d": 28000, "rolling_distance_90d": 25000,
+                "threshold_density_min_week": 20, "speed_exposure_min_week": 8,
+                "z1_pct": 0.40, "z2_pct": 0.30, "z4_pct": 0.12, "z5_pct": 0.05,
+                "weekly_load_stddev": 4000, "block_variance": 3000,
+                "session_density_stability": 0.8, "acwr_4w": 1.1,
+                "hr_drift_sustained": 0.04, "late_session_pace_decay": 0.03,
+                "matched_hr_band_pace": 270,
+            }
         baseline_time = projection.get("baseline_seconds", 1260.0) if projection else 1260.0
         scenarios = engine.compute_trajectories(
             user_id=user["user_id"],
             event=event,
             baseline_time_s=baseline_time,
-            current_features=mock_features,
+            current_features=real_features,
         )
         return TrajectoryResponse(
             event=event,

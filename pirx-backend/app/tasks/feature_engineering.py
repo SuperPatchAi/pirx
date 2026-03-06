@@ -1,3 +1,5 @@
+import os
+
 from app.tasks import celery_app
 
 STRUCTURAL_SHIFT_THRESHOLD_SECONDS = 2.0
@@ -10,7 +12,7 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     Pipeline:
     1. Load recent activities for user (TODO: from Supabase)
     2. Clean activities through CleaningService
-    3. Compute 27 features via FeatureService
+    3. Compute 25 features via FeatureService
     4. Cache features in Redis (TODO)
     5. Check structural shift threshold
     6. If shift >= 2 seconds, queue recompute_projection
@@ -32,12 +34,13 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     if activity_data:
         raw_list = [activity_data] if isinstance(activity_data, dict) else activity_data
         activities = [
-            NormalizedActivity(**a) if isinstance(a, dict) else a for a in raw_list
+            NormalizedActivity.from_db_dict(a) if isinstance(a, dict) else a for a in raw_list
         ]
     else:
-        # TODO: Load from Supabase
-        # activities = load_user_activities(user_id, days=90)
-        activities = []
+        from app.services.supabase_client import SupabaseService
+        db = SupabaseService()
+        raw = db.get_recent_activities(user_id, days=90)
+        activities = [NormalizedActivity.from_db_dict(a) for a in raw] if raw else []
 
     if not activities:
         result["status"] = "no_activities"
@@ -55,8 +58,13 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     features = FeatureService.compute_all_features(cleaned)
     result["features_computed"] = sum(1 for v in features.values() if v is not None)
 
-    # TODO: Cache in Redis
-    # cache_features(user_id, features)
+    try:
+        import redis
+        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        import json as _json
+        r.setex(f"pirx:features:{user_id}", 3600, _json.dumps({k: v for k, v in features.items() if v is not None}))
+    except Exception:
+        pass
 
     from app.tasks.projection_tasks import recompute_projection
     recompute_projection.delay(user_id)

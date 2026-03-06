@@ -26,34 +26,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-
-/* ------------------------------------------------------------------ */
-/*  Mock data generators                                              */
-/* ------------------------------------------------------------------ */
-
-function generateTrendData(
-  days: number,
-  baseFn: (i: number) => number,
-): { date: string; value: number }[] {
-  const now = new Date();
-  return Array.from({ length: days }, (_, i) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - (days - 1 - i));
-    return {
-      date: d.toISOString().slice(0, 10),
-      value: Math.round(baseFn(i) * 10) / 10,
-    };
-  });
-}
-
-function seededRandom(seed: number) {
-  const x = Math.sin(seed + 1) * 10000;
-  return x - Math.floor(x);
-}
-
-const hrData = generateTrendData(30, (i) => 52 + (seededRandom(i) * 6 - 3));
-const hrvData = generateTrendData(30, (i) => 45 + (seededRandom(i + 100) * 16 - 8));
-const sleepData = generateTrendData(30, (i) => 72 + (seededRandom(i + 200) * 24 - 12));
+import { EmptyState } from "@/components/ui/empty-state";
+import { HeartPulse } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Chart component                                                   */
@@ -185,9 +159,9 @@ function mapEntriesToTrend(
 }
 
 function TrendsTab() {
-  const [hrTrend, setHrTrend] = useState<TrendPoint[]>(hrData);
-  const [hrvTrend, setHrvTrend] = useState<TrendPoint[]>(hrvData);
-  const [sleepTrend, setSleepTrend] = useState<TrendPoint[]>(sleepData);
+  const [hrTrend, setHrTrend] = useState<TrendPoint[]>([]);
+  const [hrvTrend, setHrvTrend] = useState<TrendPoint[]>([]);
+  const [sleepTrend, setSleepTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     async function loadTrends() {
@@ -204,11 +178,21 @@ function TrendsTab() {
           if (sleep.length > 0) setSleepTrend(sleep);
         }
       } catch {
-        /* use mock data */
+        /* no data available */
       }
     }
     loadTrends();
   }, []);
+
+  if (hrTrend.length === 0 && hrvTrend.length === 0 && sleepTrend.length === 0) {
+    return (
+      <EmptyState
+        icon={HeartPulse}
+        message="No physiology data yet"
+        submessage="Sync your wearable to see trends"
+      />
+    );
+  }
 
   return (
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
@@ -421,16 +405,13 @@ function ManualEntryTab() {
 /*  Mindset Tab                                                       */
 /* ------------------------------------------------------------------ */
 
-const mindsetTrendConfidence = generateTrendData(30, (i) => Math.round(5 + seededRandom(i + 300) * 4));
-const mindsetTrendFatigue = generateTrendData(30, (i) => Math.round(4 + seededRandom(i + 400) * 5));
-const mindsetTrendFocus = generateTrendData(30, (i) => Math.round(5 + seededRandom(i + 500) * 4));
-
 function MindsetTab() {
   const [confidence, setConfidence] = useState(5);
   const [fatigue, setFatigue] = useState(5);
   const [focus, setFocus] = useState(5);
   const [notes, setNotes] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     const payload: MindsetValues = {
@@ -443,15 +424,15 @@ function MindsetTab() {
     const result = mindsetSchema.safeParse(payload);
     if (!result.success) return;
 
+    setError(null);
     try {
       const { apiFetch } = await import("@/lib/api");
-      await apiFetch("/physiology", {
+      await apiFetch("/physiology/mindset", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } catch {
-      // silently handle — fallback
+      setError("Failed to save mindset check-in. Please try again.");
     }
 
     setSubmitted(true);
@@ -463,6 +444,11 @@ function MindsetTab() {
       {submitted && (
         <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-500">
           Mindset scores saved.
+        </div>
+      )}
+      {error && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
         </div>
       )}
 
@@ -541,7 +527,7 @@ function MindsetTab() {
           </CardHeader>
           <CardContent>
             <TrendChart
-              data={mindsetTrendConfidence}
+              data={[]}
               color="hsl(var(--primary))"
               domain={[0, 10]}
             />
@@ -555,7 +541,7 @@ function MindsetTab() {
           </CardHeader>
           <CardContent>
             <TrendChart
-              data={mindsetTrendFatigue}
+              data={[]}
               color="hsl(0 84% 60%)"
               domain={[0, 10]}
             />
@@ -569,7 +555,7 @@ function MindsetTab() {
           </CardHeader>
           <CardContent>
             <TrendChart
-              data={mindsetTrendFocus}
+              data={[]}
               color="hsl(142 71% 45%)"
               domain={[0, 10]}
             />

@@ -12,12 +12,11 @@ import { useTourStore } from "@/stores/tour-store";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
-// Mock data as fallback
-const MOCK_PROJECTION = {
-  projected_time: "19:42",
-  supported_range: "19:15 – 20:08",
-  total_improvement_seconds: 78,
-  twenty_one_day_change: 5,
+const EMPTY_PROJECTION = {
+  projected_time: "—",
+  supported_range: "—",
+  total_improvement_seconds: 0,
+  twenty_one_day_change: 0,
 };
 
 function formatTime(seconds: number): string {
@@ -32,11 +31,27 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  "1500": "1500m",
+  "3000": "3K",
+  "5000": "5K",
+  "10000": "10K",
+  "21097": "Half Marathon",
+  "42195": "Marathon",
+};
+
+function formatEventLabel(event: string): string {
+  return EVENT_LABELS[event] ?? `${event}m`;
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<Record<string, unknown> | null>(null);
+  const [allEvents, setAllEvents] = useState<{ event: string; displayName: string; projectedTime: string; change: string }[] | null>(null);
   const [drivers, setDrivers] = useState<DriverApiItem[] | null>(null);
   const [readiness, setReadiness] = useState<Record<string, unknown> | null>(null);
+  const [metrics, setMetrics] = useState<{ sessions: number | null; distanceKm: number | null; acwr: number | null }>({ sessions: null, distanceKm: null, acwr: null });
+  const [syncStatus, setSyncStatus] = useState<{ lastSync: string | null; syncing: boolean }>({ lastSync: null, syncing: false });
   const [selectedEvent, setSelectedEvent] = useState("5000");
 
   const { user } = useAuth();
@@ -87,10 +102,13 @@ export default function DashboardPage() {
     async function loadData() {
       try {
         const { apiFetch } = await import("@/lib/api");
-        const [projData, driversData, readinessData] = await Promise.allSettled([
+        const [projData, driversData, readinessData, allEventsData, weeklyData, syncData] = await Promise.allSettled([
           apiFetch(`/projection?event=${selectedEvent}`),
           apiFetch("/drivers"),
           apiFetch("/readiness"),
+          apiFetch("/projection/all"),
+          apiFetch("/metrics/weekly"),
+          apiFetch("/sync/status"),
         ]);
 
         if (projData.status === "fulfilled") setProjection(projData.value as Record<string, unknown>);
@@ -110,8 +128,35 @@ export default function DashboardPage() {
           );
         }
         if (readinessData.status === "fulfilled") setReadiness(readinessData.value as Record<string, unknown>);
+        if (allEventsData.status === "fulfilled") {
+          const evts = allEventsData.value as { projections?: Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> };
+          const list = evts?.projections ?? (Array.isArray(allEventsData.value) ? allEventsData.value as Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> : []);
+          if (list.length > 0) {
+            setAllEvents(
+              list.map((p) => ({
+                event: String(p.event ?? ""),
+                displayName: p.display_name ?? formatEventLabel(String(p.event ?? "")),
+                projectedTime: formatTime(p.projected_time_seconds ?? 0),
+                change: p.twenty_one_day_change != null ? `${p.twenty_one_day_change > 0 ? "+" : ""}${p.twenty_one_day_change}s` : "—",
+              }))
+            );
+          }
+        }
+        if (weeklyData.status === "fulfilled") {
+          const w = weeklyData.value as { sessions_per_week?: number; distance_km_per_week?: number; acwr?: number };
+          setMetrics({
+            sessions: w.sessions_per_week ?? null,
+            distanceKm: w.distance_km_per_week ?? null,
+            acwr: w.acwr ?? null,
+          });
+        }
+        if (syncData.status === "fulfilled") {
+          const s = syncData.value as { connections?: Array<{ last_sync?: string }> };
+          const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
+          setSyncStatus((prev) => ({ ...prev, lastSync: latest }));
+        }
       } catch {
-        // Use mock data on failure
+        // keep empty defaults on failure
       } finally {
         setLoading(false);
       }
@@ -127,14 +172,27 @@ export default function DashboardPage() {
     [fetchProjection]
   );
 
+  const handleSyncNow = useCallback(async () => {
+    setSyncStatus((prev) => ({ ...prev, syncing: true }));
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch("/sync/trigger", { method: "POST" });
+      const s = await apiFetch("/sync/status") as { connections?: Array<{ last_sync?: string }> };
+      const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
+      setSyncStatus({ lastSync: latest, syncing: false });
+    } catch {
+      setSyncStatus((prev) => ({ ...prev, syncing: false }));
+    }
+  }, []);
+
   const projTime = projection
     ? (projection.projected_time_display as string) ?? formatTime(projection.projected_time_seconds as number)
-    : MOCK_PROJECTION.projected_time;
+    : EMPTY_PROJECTION.projected_time;
   const projRange = projection
     ? ((projection.supported_range_display as string) ?? `${formatTime(projection.supported_range_low as number)} – ${formatTime(projection.supported_range_high as number)}`)
-    : MOCK_PROJECTION.supported_range;
-  const improvement = (projection?.total_improvement_seconds as number) ?? MOCK_PROJECTION.total_improvement_seconds;
-  const change21d = (projection?.twenty_one_day_change as number) ?? MOCK_PROJECTION.twenty_one_day_change;
+    : EMPTY_PROJECTION.supported_range;
+  const improvement = (projection?.total_improvement_seconds as number) ?? EMPTY_PROJECTION.total_improvement_seconds;
+  const change21d = (projection?.twenty_one_day_change as number) ?? EMPTY_PROJECTION.twenty_one_day_change;
 
   if (loading) {
     return (
@@ -146,7 +204,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <SyncBanner />
+      <SyncBanner lastSync={syncStatus.lastSync} syncing={syncStatus.syncing} onSyncNow={handleSyncNow} />
       <div data-tour="projection-tile">
         <ProjectionTile
           event={selectedEvent}
@@ -158,7 +216,7 @@ export default function DashboardPage() {
       </div>
       <div data-tour="event-swiper">
         <EventSwiper
-          apiData={null}
+          apiData={allEvents}
           selectedEvent={selectedEvent}
           onEventSelect={handleEventSelect}
         />
@@ -166,7 +224,12 @@ export default function DashboardPage() {
       <div data-tour="driver-strip">
         <DriverStrip apiData={drivers} />
       </div>
-      <QuickMetrics readinessScore={readiness ? (readiness.score as number) : null} />
+      <QuickMetrics
+        readinessScore={readiness ? (readiness.score as number) : null}
+        sessionsPerWeek={metrics.sessions}
+        distanceKmPerWeek={metrics.distanceKm}
+        acwr={metrics.acwr}
+      />
     </div>
   );
 }

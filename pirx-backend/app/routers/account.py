@@ -46,6 +46,23 @@ async def export_user_data(user: dict = Depends(get_current_user)):
         except Exception:
             pass
 
+        chat_data = []
+        try:
+            threads = db.client.table("chat_threads").select("*").eq("user_id", user_id).execute()
+            chat_data = threads.data or []
+            for thread in chat_data:
+                msgs = db.client.table("chat_messages").select("*").eq("thread_id", thread["thread_id"]).order("created_at").execute()
+                thread["messages"] = msgs.data or []
+        except Exception:
+            pass
+
+        adjunct_data = []
+        try:
+            adj = db.client.table("adjunct_state").select("*").eq("user_id", user_id).execute()
+            adjunct_data = adj.data or []
+        except Exception:
+            pass
+
         data = {
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "user_id": user_id,
@@ -56,6 +73,8 @@ async def export_user_data(user: dict = Depends(get_current_user)):
             "wearable_connections": db.get_wearable_connections(user_id),
             "physiology": physiology_data,
             "notifications": notification_data,
+            "chat": chat_data,
+            "adjuncts": adjunct_data,
         }
     except Exception:
         data = {
@@ -79,6 +98,8 @@ async def delete_user_data(user: dict = Depends(get_current_user)):
     user_id = user["user_id"]
 
     tables = [
+        "chat_messages",
+        "chat_threads",
         "notification_log",
         "user_embeddings",
         "physiology",
@@ -176,36 +197,61 @@ class AdjunctCreate(BaseModel):
 @router.get("/adjunct-library")
 async def get_adjunct_library(user: dict = Depends(get_current_user)):
     """Get user's custom adjunct library."""
-    return {
-        "adjuncts": [
+    db = SupabaseService()
+    try:
+        result = (
+            db.client.table("adjunct_state")
+            .select("*")
+            .eq("user_id", user["user_id"])
+            .order("created_at", desc=False)
+            .execute()
+        )
+        adjuncts = [
             {
-                "id": "altitude",
-                "name": "Altitude Training",
-                "description": "Training at elevation > 1500m",
-            },
-            {
-                "id": "strength",
-                "name": "Strength Training",
-                "description": "Gym-based resistance work",
-            },
-            {
-                "id": "heat",
-                "name": "Heat Acclimation",
-                "description": "Training in high temperature",
-            },
+                "id": a["adjunct_id"],
+                "name": a["adjunct_name"],
+                "sessions_analyzed": a.get("sessions_analyzed", 0),
+                "median_projection_delta": a.get("median_projection_delta"),
+                "statistical_status": a.get("statistical_status", "observational"),
+            }
+            for a in (result.data or [])
         ]
-    }
+        return {"adjuncts": adjuncts}
+    except Exception:
+        return {"adjuncts": []}
 
 
 @router.post("/adjunct-library")
 async def add_adjunct(
     body: AdjunctCreate, user: dict = Depends(get_current_user)
 ):
-    return {"status": "created", "name": body.name}
+    """Add a new adjunct to the user's library."""
+    db = SupabaseService()
+    try:
+        result = (
+            db.client.table("adjunct_state")
+            .insert({
+                "user_id": user["user_id"],
+                "adjunct_name": body.name,
+            })
+            .execute()
+        )
+        row = result.data[0] if result.data else {}
+        return {"status": "created", "name": body.name, "id": row.get("adjunct_id")}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 
 @router.delete("/adjunct-library/{adjunct_id}")
 async def delete_adjunct(
     adjunct_id: str, user: dict = Depends(get_current_user)
 ):
-    return {"status": "deleted", "id": adjunct_id}
+    """Delete an adjunct from the user's library."""
+    db = SupabaseService()
+    try:
+        db.client.table("adjunct_state").delete().eq(
+            "adjunct_id", adjunct_id
+        ).eq("user_id", user["user_id"]).execute()
+        return {"status": "deleted", "id": adjunct_id}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}

@@ -70,7 +70,7 @@ class LMCEngine:
 
         # Bound lambda0 (intercept multiplier) near 1.0
         if len(lambda_hat) >= 1:
-            lambda_hat[0] = np.clip(lambda_hat[0], 0.85, 1.15)
+            lambda_hat[0] = np.clip(lambda_hat[0], 1.08, 1.15)
 
         # Bound lambda1 (speed-endurance coefficient) within population norms
         if len(lambda_hat) >= 2:

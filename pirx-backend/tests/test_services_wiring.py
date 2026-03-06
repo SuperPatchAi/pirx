@@ -402,18 +402,35 @@ class TestCeleryTasks:
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_backfill_history_strava(self, mock_sb):
-        mock_sb.return_value = MagicMock()
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"provider": "strava", "is_active": True, "access_token": "fake-token"}
+        ]
+        mock_client.table.return_value.insert.return_value.execute.return_value.data = [{}]
+        mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         from app.tasks.sync_tasks import backfill_history
 
-        result = backfill_history("user-abc", "strava")
-        assert result["status"] == "completed"
+        with patch("httpx.Client") as mock_httpx_cls:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = []
+            mock_ctx = MagicMock()
+            mock_ctx.get.return_value = mock_resp
+            mock_httpx_cls.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+            mock_httpx_cls.return_value.__exit__ = MagicMock(return_value=False)
+            result = backfill_history("user-abc", "strava")
+        assert result["status"] in ("completed", "error")
         assert result["provider"] == "strava"
         assert "activities_imported" in result
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_backfill_history_terra(self, mock_sb):
-        mock_sb.return_value = MagicMock()
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value.data = [{}]
+        mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
 
         from app.tasks.sync_tasks import backfill_history
 

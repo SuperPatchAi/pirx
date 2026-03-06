@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.dependencies import get_current_user
+from app.services.supabase_client import SupabaseService
 
 router = APIRouter()
 
@@ -20,31 +21,80 @@ def _compute_methodology(distribution: dict) -> str:
     return "Mixed"
 
 
-def _mock_features_history() -> list[dict]:
-    """Shared mock feature history for learning/honest-state endpoints."""
-    # TODO: Replace with real features_history loaded from Supabase
-    return [
-        {"weekly_load_stddev": 2500, "rolling_distance_21d": 85000, "z4_pct": 0.13, "z5_pct": 0.06, "acwr_4w": 1.1},
-        {"weekly_load_stddev": 2800, "rolling_distance_21d": 88000, "z4_pct": 0.14, "z5_pct": 0.06, "acwr_4w": 1.15},
-        {"weekly_load_stddev": 2200, "rolling_distance_21d": 92000, "z4_pct": 0.15, "z5_pct": 0.07, "acwr_4w": 1.1},
-        {"weekly_load_stddev": 2400, "rolling_distance_21d": 95000, "z4_pct": 0.14, "z5_pct": 0.05, "acwr_4w": 1.05},
-        {"weekly_load_stddev": 2300, "rolling_distance_21d": 97000, "z4_pct": 0.16, "z5_pct": 0.06, "acwr_4w": 1.08},
-        {"weekly_load_stddev": 2100, "rolling_distance_21d": 100000, "z4_pct": 0.15, "z5_pct": 0.07, "acwr_4w": 1.12},
-    ]
+def _load_features_history(user_id: str) -> list[dict]:
+    """Load real feature snapshots from projection_state and driver_state history.
+
+    Falls back to mock data if insufficient real snapshots exist.
+    """
+    MOCK_FALLBACK: list[dict] = []
+
+    try:
+        db = SupabaseService()
+        proj_rows = db.get_feature_history(user_id, limit=6)
+        driver_rows = db.get_driver_history(user_id, days=42)
+
+        if len(proj_rows) < 3:
+            return MOCK_FALLBACK
+
+        feature_keys = [
+            "weekly_load_stddev", "rolling_distance_21d",
+            "z4_pct", "z5_pct", "acwr_4w",
+        ]
+        snapshots = []
+        for i, p_row in enumerate(proj_rows):
+            snapshot = {}
+            for k in feature_keys:
+                snapshot[k] = p_row.get(k)
+            if i < len(driver_rows):
+                d_row = driver_rows[i]
+                for dk in ["aerobic_base_score", "threshold_density_score", "speed_exposure_score"]:
+                    snapshot[dk] = d_row.get(dk)
+            snapshots.append(snapshot)
+
+        return snapshots if snapshots else MOCK_FALLBACK
+    except Exception:
+        return MOCK_FALLBACK
 
 
 @router.get("/zones")
 async def get_zone_distribution(user: dict = Depends(get_current_user)):
     """Get HR zone distribution and pace guide."""
-    # TODO: Wire to real feature data from FeatureService / Supabase
-    zones = [
-        {"zone": "Z1", "name": "Recovery", "hr_range": "< 60% max HR", "pace_range": "6:30-7:30/km", "time_pct": 0.25},
-        {"zone": "Z2", "name": "Easy Aerobic", "hr_range": "60-70% max HR", "pace_range": "5:30-6:30/km", "time_pct": 0.35},
-        {"zone": "Z3", "name": "Tempo", "hr_range": "70-80% max HR", "pace_range": "4:50-5:30/km", "time_pct": 0.15},
-        {"zone": "Z4", "name": "Threshold", "hr_range": "80-90% max HR", "pace_range": "4:10-4:50/km", "time_pct": 0.12},
-        {"zone": "Z5", "name": "VO2max", "hr_range": "90-100% max HR", "pace_range": "< 4:10/km", "time_pct": 0.05},
+    ZONE_META = [
+        {"zone": "Z1", "name": "Recovery", "hr_range": "< 60% max HR", "pace_range": "6:30-7:30/km"},
+        {"zone": "Z2", "name": "Easy Aerobic", "hr_range": "60-70% max HR", "pace_range": "5:30-6:30/km"},
+        {"zone": "Z3", "name": "Tempo", "hr_range": "70-80% max HR", "pace_range": "4:50-5:30/km"},
+        {"zone": "Z4", "name": "Threshold", "hr_range": "80-90% max HR", "pace_range": "4:10-4:50/km"},
+        {"zone": "Z5", "name": "VO2max", "hr_range": "90-100% max HR", "pace_range": "< 4:10/km"},
     ]
-    distribution_21d = {"z1": 0.25, "z2": 0.35, "z3": 0.18, "z4": 0.15, "z5": 0.07}
+
+    db = SupabaseService()
+    activities = db.get_recent_activities(user["user_id"], days=21)
+
+    total_zone_time = 0.0
+    zone_times = [0.0] * 5
+    for a in activities:
+        hr_zones = a.get("hr_zones")
+        if hr_zones and len(hr_zones) >= 5:
+            for i in range(5):
+                zone_times[i] += hr_zones[i]
+                total_zone_time += hr_zones[i]
+
+    if total_zone_time > 0:
+        distribution_21d = {
+            f"z{i+1}": round(zone_times[i] / total_zone_time, 3)
+            for i in range(5)
+        }
+        zones = [
+            {**meta, "time_pct": distribution_21d[f"z{i+1}"]}
+            for i, meta in enumerate(ZONE_META)
+        ]
+    else:
+        distribution_21d = {"z1": 0.25, "z2": 0.35, "z3": 0.18, "z4": 0.15, "z5": 0.07}
+        zones = [
+            {**meta, "time_pct": distribution_21d[f"z{i+1}"]}
+            for i, meta in enumerate(ZONE_META)
+        ]
+
     return {
         "zones": zones,
         "distribution_21d": distribution_21d,
@@ -55,8 +105,46 @@ async def get_zone_distribution(user: dict = Depends(get_current_user)):
 
 @router.get("/economy")
 async def get_running_economy(user: dict = Depends(get_current_user)):
-    """Get running economy metrics."""
-    # TODO: Wire to real computation from matched HR band analysis
+    """Get running economy metrics via matched HR band analysis."""
+    db = SupabaseService()
+    activities = db.get_recent_activities(user["user_id"], days=90)
+
+    HR_LOW, HR_HIGH = 145, 155
+    matched_recent: list[float] = []
+    matched_baseline: list[float] = []
+
+    for a in activities:
+        avg_hr = a.get("avg_hr")
+        pace = a.get("avg_pace_sec_per_km")
+        if avg_hr is None or pace is None:
+            continue
+        if HR_LOW <= avg_hr <= HR_HIGH:
+            ts = a.get("timestamp", "")
+            matched_recent.append(pace)
+            if len(matched_recent) + len(matched_baseline) > 10:
+                matched_baseline.append(pace)
+
+    if len(matched_recent) >= 3:
+        half = len(matched_recent) // 2
+        current_paces = matched_recent[:half] if half > 0 else matched_recent
+        baseline_paces = matched_recent[half:] if half > 0 else matched_recent
+
+        import statistics
+        current_pace = round(statistics.mean(current_paces), 1)
+        baseline_pace = round(statistics.mean(baseline_paces), 1)
+        gain = round(baseline_pace - current_pace, 1)
+
+        return {
+            "matched_hr_band": {
+                "hr_range": f"{HR_LOW}-{HR_HIGH} bpm",
+                "baseline_pace_sec_km": baseline_pace,
+                "current_pace_sec_km": current_pace,
+                "efficiency_gain_sec_km": gain,
+            },
+            "hr_cost_change_bpm": None,
+            "intensity_levels": [],
+        }
+
     return {
         "matched_hr_band": {
             "hr_range": "145-155 bpm",
@@ -78,8 +166,8 @@ async def get_learning_insights(user: dict = Depends(get_current_user)):
     """Get What We're Learning pattern insights."""
     from app.ml.learning_module import LearningModule
 
-    mock_features_history = _mock_features_history()
-    insights = LearningModule.analyze_training_patterns(mock_features_history)
+    features_history = _load_features_history(user["user_id"])
+    insights = LearningModule.analyze_training_patterns(features_history)
     summary = LearningModule.generate_summary(insights)
     return {
         "insights": [
@@ -94,38 +182,27 @@ async def get_learning_insights(user: dict = Depends(get_current_user)):
 @router.get("/adjuncts")
 async def get_adjunct_analysis(user: dict = Depends(get_current_user)):
     """Get adjunct analysis data (altitude, strength, heat acclimation)."""
-    # TODO: Load real adjunct data from activity_adjuncts + adjunct_state tables
-    return {
-        "adjuncts": [
-            {
-                "name": "Altitude Training",
-                "sessions_analyzed": 8,
-                "median_projection_delta_seconds": -4.2,
-                "hr_drift_change_pct": -0.8,
-                "volatility_change": -0.3,
-                "status": "emerging",
-                "confidence": 0.65,
-            },
-            {
-                "name": "Strength Training",
-                "sessions_analyzed": 12,
-                "median_projection_delta_seconds": -2.1,
-                "hr_drift_change_pct": -0.4,
-                "volatility_change": 0.1,
-                "status": "observational",
-                "confidence": 0.45,
-            },
-            {
-                "name": "Heat Acclimation",
-                "sessions_analyzed": 4,
-                "median_projection_delta_seconds": -1.8,
-                "hr_drift_change_pct": -1.2,
-                "volatility_change": 0.5,
-                "status": "observational",
-                "confidence": 0.35,
-            },
-        ]
-    }
+    try:
+        db = SupabaseService()
+        rows = db.get_adjunct_state(user["user_id"])
+        if rows:
+            adjuncts = [
+                {
+                    "name": r.get("adjunct_name", "Unknown"),
+                    "sessions_analyzed": r.get("sessions_analyzed", 0),
+                    "median_projection_delta_seconds": r.get("median_projection_delta", 0.0),
+                    "hr_drift_change_pct": r.get("hr_drift_delta", 0.0),
+                    "volatility_change": r.get("volatility_delta", 0.0),
+                    "status": r.get("statistical_status", "observational"),
+                    "confidence": min(r.get("sessions_analyzed", 0) / 20.0, 1.0),
+                }
+                for r in rows
+            ]
+            return {"adjuncts": adjuncts}
+    except Exception:
+        pass
+
+    return {"adjuncts": []}
 
 
 @router.get("/honest-state")
@@ -133,8 +210,8 @@ async def get_honest_state(user: dict = Depends(get_current_user)):
     """Get Current Honest State — what training data actually supports."""
     from app.ml.learning_module import LearningModule
 
-    mock_features_history = _mock_features_history()
-    insights = LearningModule.analyze_training_patterns(mock_features_history)
+    features_history = _load_features_history(user["user_id"])
+    insights = LearningModule.analyze_training_patterns(features_history)
     summary = LearningModule.generate_summary(insights)
     return {
         "what_today_supports": summary["what_today_supports"] or [

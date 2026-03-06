@@ -40,8 +40,19 @@ openai
 tiktoken
 shap
 
+# === Push Notifications ===
+pywebpush
+
 # === Monitoring ===
 sentry-sdk[fastapi]
+
+# === Security ===
+cryptography
+
+# === ML Advanced ===
+torch
+optuna
+dtaidistance
 
 # === Testing ===
 pytest

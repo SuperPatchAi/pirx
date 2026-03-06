@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -15,8 +16,23 @@ celery_app.config_from_object(
             "app.tasks.projection_tasks.*": {"queue": "projection"},
             "app.tasks.feature_engineering.*": {"queue": "projection"},
             "app.tasks.sync_tasks.*": {"queue": "sync"},
+            "app.tasks.chat_tasks.*": {"queue": "chat"},
         },
         "task_time_limit": 300,
         "task_soft_time_limit": 240,
+        "beat_schedule": {
+            "structural-decay-check-daily": {
+                "task": "app.tasks.projection_tasks.structural_decay_check",
+                "schedule": crontab(hour=3, minute=0),
+            },
+            "weekly-summary": {
+                "task": "app.tasks.projection_tasks.weekly_summary",
+                "schedule": crontab(hour=8, minute=0, day_of_week=1),
+            },
+            "monthly-bias-correction": {
+                "task": "app.tasks.projection_tasks.bias_correction",
+                "schedule": crontab(hour=4, minute=0, day_of_month=1),
+            },
+        },
     }
 )

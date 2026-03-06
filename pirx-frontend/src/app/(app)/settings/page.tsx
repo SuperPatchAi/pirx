@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { useTourStore } from "@/stores/tour-store";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ import {
   ChevronRight,
   Download,
   Trash2,
+  HelpCircle,
 } from "lucide-react";
 
 // TODO: Fetch wearable status from API when available
@@ -78,6 +81,8 @@ const EVENTS = [
 export default function SettingsPage() {
   const { user } = useAuth();
   const supabase = createClient();
+  const router = useRouter();
+  const { resetCompleted } = useTourStore();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -313,6 +318,31 @@ export default function SettingsPage() {
                 }
               />
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Help */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <HelpCircle className="h-4 w-4" />
+          Help
+        </h2>
+        <Card>
+          <CardContent className="p-4">
+            <Button
+              variant="outline"
+              className="w-full"
+              size="sm"
+              onClick={() => {
+                resetCompleted();
+                router.push("/dashboard");
+              }}
+            >
+              <HelpCircle className="mr-2 h-4 w-4" /> Take a Tour
+            </Button>
           </CardContent>
         </Card>
       </div>

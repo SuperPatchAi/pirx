@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 export function ChatFAB() {
   return (
     <motion.div
+      data-tour="chat-fab"
       className="fixed bottom-20 right-4 z-50 pb-[env(safe-area-inset-bottom)]"
       initial={{ scale: 0 }}
       animate={{ scale: 1 }}

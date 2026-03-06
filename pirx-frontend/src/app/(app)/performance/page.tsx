@@ -846,6 +846,7 @@ export default function PerformancePage() {
   const [trendsData, setTrendsData] = useState<{ date: string; time: number }[] | null>(null);
   const [trendsRangeData, setTrendsRangeData] = useState<{ date: string; low: number; high: number }[] | null>(null);
   const [activeTab, setActiveTab] = useState("snapshot");
+  const [fetchedTabs, setFetchedTabs] = useState<Set<string>>(new Set());
 
   // Lazy-loaded tab state
   const [driversData, setDriversData] = useState<Driver[] | null>(null);
@@ -862,6 +863,10 @@ export default function PerformancePage() {
   const [adjunctsLoading, setAdjunctsLoading] = useState(false);
   const [honestStateData, setHonestStateData] = useState<HonestStateData | null>(null);
   const [honestStateLoading, setHonestStateLoading] = useState(false);
+
+  const markFetched = useCallback((tab: string) => {
+    setFetchedTabs((prev) => new Set(prev).add(tab));
+  }, []);
 
   // Initial snapshot/trends load
   useEffect(() => {
@@ -948,76 +953,83 @@ export default function PerformancePage() {
     load();
   }, []);
 
-  // Lazy tab fetching
+  // Lazy tab fetching (each tab fetched at most once per mount)
   useEffect(() => {
-    if (activeTab === "drivers" && !driversData && !driversLoading) {
+    if (activeTab === "drivers" && !fetchedTabs.has("drivers")) {
+      markFetched("drivers");
       setDriversLoading(true);
       apiFetch("/drivers")
         .then((d) => setDriversData(Array.isArray(d) ? d : d.drivers ?? []))
         .catch(() => {})
         .finally(() => setDriversLoading(false));
     }
-  }, [activeTab, driversData, driversLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "zones" && !zonesData && !zonesLoading) {
+    if (activeTab === "zones" && !fetchedTabs.has("zones")) {
+      markFetched("zones");
       setZonesLoading(true);
       apiFetch("/features/zones")
         .then(setZonesData)
         .catch(() => {})
         .finally(() => setZonesLoading(false));
     }
-  }, [activeTab, zonesData, zonesLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "economy" && !economyData && !economyLoading) {
+    if (activeTab === "economy" && !fetchedTabs.has("economy")) {
+      markFetched("economy");
       setEconomyLoading(true);
       apiFetch("/features/economy")
         .then(setEconomyData)
         .catch(() => {})
         .finally(() => setEconomyLoading(false));
     }
-  }, [activeTab, economyData, economyLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "readiness" && !readinessData && !readinessLoading) {
+    if (activeTab === "readiness" && !fetchedTabs.has("readiness")) {
+      markFetched("readiness");
       setReadinessLoading(true);
       apiFetch("/readiness")
         .then(setReadinessData)
         .catch(() => {})
         .finally(() => setReadinessLoading(false));
     }
-  }, [activeTab, readinessData, readinessLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "learning" && !learningData && !learningLoading) {
+    if (activeTab === "learning" && !fetchedTabs.has("learning")) {
+      markFetched("learning");
       setLearningLoading(true);
       apiFetch("/features/learning")
         .then(setLearningData)
         .catch(() => {})
         .finally(() => setLearningLoading(false));
     }
-  }, [activeTab, learningData, learningLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "adjuncts" && !adjunctsData && !adjunctsLoading) {
+    if (activeTab === "adjuncts" && !fetchedTabs.has("adjuncts")) {
+      markFetched("adjuncts");
       setAdjunctsLoading(true);
       apiFetch("/features/adjuncts")
         .then((d) => setAdjunctsData(Array.isArray(d) ? d : d.adjuncts ?? []))
         .catch(() => {})
         .finally(() => setAdjunctsLoading(false));
     }
-  }, [activeTab, adjunctsData, adjunctsLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   useEffect(() => {
-    if (activeTab === "honest-state" && !honestStateData && !honestStateLoading) {
+    if (activeTab === "honest-state" && !fetchedTabs.has("honest-state")) {
+      markFetched("honest-state");
       setHonestStateLoading(true);
       apiFetch("/features/honest-state")
         .then(setHonestStateData)
         .catch(() => {})
         .finally(() => setHonestStateLoading(false));
     }
-  }, [activeTab, honestStateData, honestStateLoading]);
+  }, [activeTab, fetchedTabs, markFetched]);
 
   if (loading) {
     return (

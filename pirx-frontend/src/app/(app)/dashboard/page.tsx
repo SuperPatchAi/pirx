@@ -8,6 +8,7 @@ import { QuickMetrics } from "@/components/home/quick-metrics";
 import { SyncBanner } from "@/components/home/sync-banner";
 import { useProjectionRealtime } from "@/hooks/use-projection-realtime";
 import { useProjectionStore } from "@/stores/projection-store";
+import { useTourStore } from "@/stores/tour-store";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
@@ -40,6 +41,15 @@ export default function DashboardPage() {
 
   const { user } = useAuth();
   useProjectionRealtime(user?.id ?? null);
+
+  const { startTour, hasCompleted, isActive: tourActive } = useTourStore();
+
+  useEffect(() => {
+    if (!loading && !tourActive && !hasCompleted()) {
+      const timer = setTimeout(() => startTour(), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const storeProjectionTime = useProjectionStore((s) => s.projectedTimeSeconds);
   const storeDrivers = useProjectionStore((s) => s.drivers);
@@ -137,19 +147,25 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <SyncBanner />
-      <ProjectionTile
-        event={selectedEvent}
-        projectedTime={projTime}
-        range={projRange}
-        improvementSeconds={improvement}
-        twentyOneDayChange={change21d}
-      />
-      <EventSwiper
-        apiData={null}
-        selectedEvent={selectedEvent}
-        onEventSelect={handleEventSelect}
-      />
-      <DriverStrip apiData={drivers} />
+      <div data-tour="projection-tile">
+        <ProjectionTile
+          event={selectedEvent}
+          projectedTime={projTime}
+          range={projRange}
+          improvementSeconds={improvement}
+          twentyOneDayChange={change21d}
+        />
+      </div>
+      <div data-tour="event-swiper">
+        <EventSwiper
+          apiData={null}
+          selectedEvent={selectedEvent}
+          onEventSelect={handleEventSelect}
+        />
+      </div>
+      <div data-tour="driver-strip">
+        <DriverStrip apiData={drivers} />
+      </div>
       <QuickMetrics readinessScore={readiness ? (readiness.score as number) : null} />
     </div>
   );

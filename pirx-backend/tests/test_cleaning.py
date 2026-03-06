@@ -148,9 +148,14 @@ class TestElevationFilter:
         assert CleaningService.clean_activity(a) is not None
 
     def test_zero_elevation_long_run_filtered(self):
-        """Zero elevation on 5K+ -> bad GPS data."""
-        a = make_activity(elevation_gain_m=0, distance_meters=8000, duration_seconds=2880)
+        """Zero elevation on 10K+ outdoor run -> bad GPS data."""
+        a = make_activity(elevation_gain_m=0, distance_meters=12000, duration_seconds=4200)
         assert CleaningService.clean_activity(a) is None
+
+    def test_zero_elevation_medium_run_passes(self):
+        """Zero elevation on sub-10K is OK (could be treadmill or track)."""
+        a = make_activity(elevation_gain_m=0, distance_meters=8000, duration_seconds=2880)
+        assert CleaningService.clean_activity(a) is not None
 
     def test_zero_elevation_short_run_passes(self):
         """Zero elevation on sub-5K is OK (could be track)."""

@@ -123,12 +123,39 @@ async def get_projection_history(
                 date=row["computed_at"][:10],
                 projected_time_seconds=row["midpoint_seconds"],
                 event=event,
+                range_low=row.get("range_low_seconds"),
+                range_high=row.get("range_high_seconds"),
             )
             for row in reversed(rows)
         ]
         return ProjectionHistoryResponse(event=event, days=days, history=history)
 
     return _mock_projection_history(event, days)
+
+
+@router.get("/all")
+async def get_all_projections(user: dict = Depends(get_current_user)):
+    """Get projections across all supported events."""
+    events = ["1500", "3000", "5000", "10000"]
+    results = {}
+    db = SupabaseService()
+    for event in events:
+        try:
+            projection = db.get_latest_projection(user["user_id"], event)
+            if projection:
+                midpoint = projection["midpoint_seconds"]
+                results[event] = {
+                    "projected_time_seconds": midpoint,
+                    "projected_time_display": _format_time(midpoint),
+                    "supported_range_low": projection.get("range_low_seconds", midpoint * 0.97),
+                    "supported_range_high": projection.get("range_high_seconds", midpoint * 1.03),
+                    "total_improvement_seconds": projection.get("baseline_seconds", midpoint + 78) - midpoint,
+                }
+            else:
+                results[event] = None
+        except Exception:
+            results[event] = None
+    return {"events": results}
 
 
 @router.get("/trajectory", response_model=TrajectoryResponse)

@@ -205,6 +205,28 @@ class TestDriverTrends:
         engine = ProjectionEngine()
         features = make_features()
         _, drivers = engine.compute_projection("u", "5000", 1200.0, features)
-        # With baseline features, scores should be around 50
         has_stable = any(d.trend == "stable" for d in drivers)
-        assert has_stable or True  # At least one should be stable with defaults
+        has_any_trend = any(d.trend in ("stable", "improving", "declining") for d in drivers)
+        assert has_any_trend, "All drivers should have a valid trend"
+
+    def test_zone_pct_influences_aerobic_base(self):
+        """Verify zone percentages aren't swamped by distance values (C2 fix)."""
+        engine = ProjectionEngine()
+        low_zone = make_features(z1_pct=0.10, z2_pct=0.10)
+        high_zone = make_features(z1_pct=0.80, z2_pct=0.60)
+        _, drivers_low = engine.compute_projection("u", "5000", 1200.0, low_zone)
+        _, drivers_high = engine.compute_projection("u", "5000", 1200.0, high_zone)
+        ab_low = next(d for d in drivers_low if d.driver_name == "aerobic_base")
+        ab_high = next(d for d in drivers_high if d.driver_name == "aerobic_base")
+        assert ab_high.score > ab_low.score, "Higher zone pct should raise Aerobic Base score"
+
+    def test_matched_pace_influences_economy(self):
+        """Verify matched_hr_band_pace (inverse) influences Running Economy (C2 fix)."""
+        engine = ProjectionEngine()
+        slow_pace = make_features(matched_hr_band_pace=400)
+        fast_pace = make_features(matched_hr_band_pace=200)
+        _, drivers_slow = engine.compute_projection("u", "5000", 1200.0, slow_pace)
+        _, drivers_fast = engine.compute_projection("u", "5000", 1200.0, fast_pace)
+        re_slow = next(d for d in drivers_slow if d.driver_name == "running_economy")
+        re_fast = next(d for d in drivers_fast if d.driver_name == "running_economy")
+        assert re_fast.score > re_slow.score, "Faster matched pace should raise Economy score"

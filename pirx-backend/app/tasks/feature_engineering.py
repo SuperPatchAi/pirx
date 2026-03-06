@@ -58,10 +58,8 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     # TODO: Cache in Redis
     # cache_features(user_id, features)
 
-    # TODO: Check structural shift
-    # current_projection = get_current_projection(user_id)
-    # if shift >= STRUCTURAL_SHIFT_THRESHOLD_SECONDS:
-    #     recompute_projection.delay(user_id)
-    #     result["projection_recompute_triggered"] = True
+    from app.tasks.projection_tasks import recompute_projection
+    recompute_projection.delay(user_id)
+    result["projection_recompute_triggered"] = True
 
     return result

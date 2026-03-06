@@ -1,13 +1,12 @@
 """PIRX LangGraph Chat Agent.
 
 Stateful conversational agent with 8 tools for querying user data.
-Uses intent classification to route queries efficiently.
+Uses Google Gemini for LLM inference with tool calling.
 """
 
 from typing import Annotated, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -22,20 +21,21 @@ class AgentState(TypedDict):
     user_id: str
 
 
-def create_agent(model_name: str = "gpt-4o-mini"):
+def create_agent(model_name: str = "gemini-3.1-pro-preview"):
     """Create a PIRX chat agent graph.
 
     Args:
-        model_name: OpenAI model to use. Default gpt-4o-mini for cost efficiency.
+        model_name: Google Gemini model to use.
 
     Returns:
         Compiled LangGraph StateGraph
     """
-    llm = ChatOpenAI(
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    llm = ChatGoogleGenerativeAI(
         model=model_name,
-        api_key=settings.openai_api_key or "sk-mock-key",
+        google_api_key=settings.google_api_key,
         temperature=0.3,
-        streaming=True,
     )
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 

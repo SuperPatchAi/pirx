@@ -1,11 +1,97 @@
+import logging
+
+from app.ml.projection_engine import ProjectionEngine, DriverState, DRIVER_NAMES
+from app.ml.shap_explainer import SHAPExplainer
+from app.services.supabase_client import SupabaseService
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
 class DriverService:
-    """Handles driver state computation and retrieval.
+    """Computes driver contributions and stores immutable driver states."""
 
-    Responsibilities:
-    - Compute per-driver contribution in seconds from feature vectors
-    - Ensure all 5 drivers sum exactly to total improvement (no rounding errors)
-    - Classify driver stability: Stable / Active / Declining
-    - Retrieve driver trend history for visualization
-    """
+    def __init__(self):
+        self.db = SupabaseService()
+        self.engine = ProjectionEngine()
 
-    pass
+    def compute_and_store_drivers(
+        self,
+        user_id: str,
+        event: str,
+        baseline_time_s: float,
+        features: dict,
+        previous_projection=None,
+    ) -> tuple:
+        """Compute projection + drivers and store to DB.
+
+        Returns (ProjectionState, list[DriverState])
+        """
+        projection_state, driver_states = self.engine.compute_projection(
+            user_id=user_id,
+            event=event,
+            baseline_time_s=baseline_time_s,
+            features=features,
+            previous_state=previous_projection,
+        )
+
+        if not self.engine.validate_driver_sum(
+            driver_states, projection_state.total_improvement_seconds
+        ):
+            raise ValueError(
+                f"Driver sum validation failed: drivers sum to "
+                f"{sum(d.contribution_seconds for d in driver_states)}, "
+                f"expected {projection_state.total_improvement_seconds}"
+            )
+
+        try:
+            self.db.insert_projection({
+                "user_id": user_id,
+                "event": event,
+                "midpoint_seconds": projection_state.projected_time_seconds,
+                "range_low_seconds": projection_state.supported_range_low,
+                "range_high_seconds": projection_state.supported_range_high,
+                "baseline_seconds": projection_state.baseline_time_seconds,
+                "improvement_since_baseline": projection_state.total_improvement_seconds,
+                "volatility": projection_state.volatility,
+            })
+        except Exception:
+            logger.exception("Failed to insert projection state for user %s", user_id)
+
+        driver_row = {"user_id": user_id, "event": event}
+        for ds in driver_states:
+            driver_row[f"{ds.driver_name}_seconds"] = ds.contribution_seconds
+            driver_row[f"{ds.driver_name}_score"] = ds.score
+            driver_row[f"{ds.driver_name}_trend"] = ds.trend
+
+        try:
+            self.db.insert_driver_state(driver_row)
+        except Exception:
+            logger.exception("Failed to insert driver state for user %s", user_id)
+
+        return projection_state, driver_states
+
+    def get_driver_explanation(
+        self,
+        driver_name: str,
+        features: dict,
+        previous_features: Optional[dict] = None,
+    ):
+        return SHAPExplainer.explain_driver(driver_name, features, previous_features)
+
+    def classify_stability(self, driver_name: str, history: list[dict]) -> str:
+        """Classify driver stability from history: Stable / Active / Declining."""
+        if len(history) < 3:
+            return "Active"
+        scores = [h.get(f"{driver_name}_score", 50) for h in history[-6:]]
+        if len(scores) < 2:
+            return "Active"
+        import numpy as np
+
+        std = np.std(scores)
+        trend = scores[-1] - scores[0]
+        if std < 3:
+            return "Stable"
+        elif trend < -5:
+            return "Declining"
+        return "Active"

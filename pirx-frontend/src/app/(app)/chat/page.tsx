@@ -50,6 +50,40 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Load chat history when threadId is available
+  useEffect(() => {
+    if (!threadId) return;
+    async function loadHistory() {
+      try {
+        const { apiFetch } = await import("@/lib/api");
+        const data = await apiFetch(`/chat/history?thread_id=${threadId}`);
+        if (data.messages && data.messages.length > 0) {
+          setMessages(
+            data.messages.map(
+              (m: {
+                role: string;
+                content: string;
+                timestamp: string;
+                tool_calls?: unknown[];
+              }) => ({
+                id: crypto.randomUUID(),
+                role: m.role as "user" | "assistant",
+                content: m.content,
+                timestamp: m.timestamp,
+                toolCalls: m.tool_calls as
+                  | { tool: string; args: Record<string, unknown> }[]
+                  | undefined,
+              })
+            )
+          );
+        }
+      } catch {
+        /* history load failure is non-critical */
+      }
+    }
+    loadHistory();
+  }, [threadId]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isLoading) return;
@@ -65,38 +99,103 @@ export default function ChatPage() {
       setInput("");
       setIsLoading(true);
 
+      const assistantId = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
       try {
-        const { apiFetch } = await import("@/lib/api");
-        const data = await apiFetch("/chat", {
+        const { createClient } = await import("@/lib/supabase/client");
+        const { API_URL } = await import("@/lib/api");
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const response = await fetch(`${API_URL}/chat/stream`, {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             message: text.trim(),
             thread_id: threadId,
           }),
         });
 
-        if (!threadId && data.thread_id) {
-          setThreadId(data.thread_id);
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+        let sseBuffer = "";
+
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split("\n");
+          sseBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.done) {
+                if (!threadId && data.thread_id) setThreadId(data.thread_id);
+                break;
+              }
+              if (data.delta) {
+                fullText += data.delta;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: fullText } : m
+                  )
+                );
+              }
+              if (data.thread_id && !threadId) setThreadId(data.thread_id);
+              if (data.error) {
+                fullText = "Something went wrong. Please try again.";
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: fullText } : m
+                  )
+                );
+              }
+            } catch {
+              /* skip malformed SSE lines */
+            }
+          }
         }
 
-        const assistantMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.response,
-          timestamp: new Date().toISOString(),
-          toolCalls: data.tool_calls,
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
+        if (!fullText) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: "No response received. Please try again." }
+                : m
+            )
+          );
+        }
       } catch {
-        const errorMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "I&apos;m having trouble connecting to the server. Please check that the backend is running and try again.",
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content:
+                    "Unable to connect to the server. Please check that the backend is running.",
+                }
+              : m
+          )
+        );
       } finally {
         setIsLoading(false);
       }
@@ -195,22 +294,23 @@ export default function ChatPage() {
           ))}
         </AnimatePresence>
 
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex justify-start"
-          >
-            <div className="bg-muted rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
-                  Analyzing your data...
-                </span>
+        {isLoading &&
+          messages.length > 0 &&
+          messages[messages.length - 1].role === "assistant" &&
+          !messages[messages.length - 1].content && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <div className="bg-muted rounded-2xl px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">...</span>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
 
         <div ref={messagesEndRef} />
       </div>

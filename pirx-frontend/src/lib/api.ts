@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const supabase = createClient();

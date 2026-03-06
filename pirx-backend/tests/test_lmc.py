@@ -138,6 +138,25 @@ class TestSupportedRange:
         assert (high_95 - low_95) > (high_68 - low_68)
 
 
+class TestLambdaBounding:
+    def test_lambda0_near_one(self):
+        """lambda_hat[0] (intercept) should be near 1.0, not clipped to [1.10, 1.15]."""
+        engine = LMCEngine(rank=2)
+        lam = engine.estimate_runner(["5000", "10000"], [1200.0, 2600.0])
+        assert 0.85 <= lam[0] <= 1.15
+
+    def test_lambda1_within_population_bounds(self):
+        """lambda_hat[1] (speed-endurance) should be bounded to [1.10, 1.15]."""
+        engine = LMCEngine(rank=2)
+        lam = engine.estimate_runner(["5000", "10000"], [1200.0, 2600.0])
+        assert 1.10 <= lam[1] <= 1.15
+
+    def test_single_race_rank2_lambda0_near_one(self):
+        engine = LMCEngine(rank=2)
+        lam = engine.estimate_runner(["5000"], [1200.0])
+        assert 0.85 <= lam[0] <= 1.15
+
+
 class TestFindClosestEvent:
     def test_exact_distance(self):
         assert LMCEngine._find_closest_event(5000) == "5000"

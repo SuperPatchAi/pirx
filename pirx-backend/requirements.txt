@@ -33,6 +33,7 @@ gpxpy
 langchain
 langchain-openai
 langchain-anthropic
+langchain-google-genai
 langgraph
 langgraph-checkpoint-postgres
 openai

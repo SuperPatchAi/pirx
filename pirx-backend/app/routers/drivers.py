@@ -8,7 +8,6 @@ from app.models.projection import (
     DriverSummary,
     DriverDetailResponse,
     DriverDetailPoint,
-    DriverExplanation,
 )
 from app.services.supabase_client import SupabaseService
 
@@ -159,21 +158,33 @@ async def get_drivers(
     return _mock_drivers(event)
 
 
-@router.get("/{driver_name}/explain", response_model=DriverExplanation)
+@router.get("/{driver_name}/explain")
 async def explain_driver(
     driver_name: str,
     user: dict = Depends(get_current_user),
 ):
     """Get SHAP-based explanation for driver change."""
-    return DriverExplanation(
-        driver_name=driver_name,
-        top_factors=[
-            {"feature": "rolling_distance_7d", "impact": 0.35, "direction": "positive"},
-            {"feature": "z2_pct", "impact": 0.25, "direction": "positive"},
-            {"feature": "sessions_per_week", "impact": 0.15, "direction": "positive"},
-        ],
-        summary=f"Your {DRIVER_DISPLAY_NAMES.get(driver_name, driver_name)} improved primarily due to increased weekly volume and consistent Zone 2 training.",
-    )
+    from app.ml.shap_explainer import SHAPExplainer
+
+    # TODO: Load real features from Supabase
+    mock_features = {
+        "rolling_distance_7d": 35000, "rolling_distance_21d": 90000, "rolling_distance_42d": 170000,
+        "z1_pct": 0.35, "z2_pct": 0.32, "z4_pct": 0.14, "z5_pct": 0.06,
+        "threshold_density_min_week": 22, "speed_exposure_min_week": 8,
+        "hr_drift_sustained": 0.035, "late_session_pace_decay": 0.025,
+        "matched_hr_band_pace": 265,
+        "weekly_load_stddev": 2500, "block_variance": 2800,
+        "session_density_stability": 0.85, "acwr_4w": 1.1,
+    }
+    explanation = SHAPExplainer.explain_driver(driver_name, mock_features)
+    return {
+        "driver_name": explanation.driver_name,
+        "display_name": explanation.display_name,
+        "overall_direction": explanation.overall_direction,
+        "top_factors": explanation.top_features,
+        "summary": explanation.narrative,
+        "confidence": explanation.confidence,
+    }
 
 
 @router.get("/{driver_name}", response_model=DriverDetailResponse)

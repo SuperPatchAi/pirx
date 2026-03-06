@@ -1,12 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Activity,
   Watch,
@@ -19,8 +32,11 @@ import {
   Timer,
   User,
   ChevronRight,
+  Download,
+  Trash2,
 } from "lucide-react";
 
+// TODO: Fetch wearable status from API when available
 const WEARABLE_CONNECTIONS = [
   {
     id: "strava",
@@ -60,6 +76,44 @@ const EVENTS = [
 ];
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  const supabase = createClient();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
+
+  const handleExport = async () => {
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      const data = await apiFetch("/account/export");
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "pirx-data-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // TODO: surface error via toast
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch("/account/delete", { method: "DELETE" });
+      await supabase.auth.signOut();
+      window.location.href = "/login";
+    } catch {
+      // TODO: surface error via toast
+    }
+  };
+
+  // TODO: Persist notification toggles to Supabase when API available
   const [notifications, setNotifications] = useState({
     projectionShift: true,
     readinessChange: true,
@@ -276,11 +330,48 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm">Email</span>
               <span className="text-sm text-muted-foreground">
-                user@example.com
+                {user?.email || "Not signed in"}
               </span>
             </div>
             <Separator />
-            <Button variant="destructive" className="w-full" size="sm">
+            <Button
+              variant="outline"
+              className="w-full"
+              size="sm"
+              onClick={handleExport}
+            >
+              <Download className="mr-2 h-4 w-4" /> Export My Data
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete All Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete all your data?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. All your training data,
+                    projections, and account information will be permanently
+                    deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete}>
+                    Delete Everything
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Separator />
+            <Button
+              variant="destructive"
+              className="w-full"
+              size="sm"
+              onClick={handleSignOut}
+            >
               <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </Button>
           </CardContent>

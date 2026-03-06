@@ -261,17 +261,21 @@ class TestPrompts:
 
 
 class TestAgentStructure:
+    @patch("app.chat.agent.settings")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_agent_creates(self, mock_client_fn):
+    def test_agent_creates(self, mock_client_fn, mock_settings):
         mock_client_fn.return_value = MagicMock()
+        mock_settings.google_api_key = "test-key"
         from app.chat.agent import create_agent
 
         agent = create_agent()
         assert agent is not None
 
+    @patch("app.chat.agent.settings")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_agent_singleton(self, mock_client_fn):
+    def test_agent_singleton(self, mock_client_fn, mock_settings):
         mock_client_fn.return_value = MagicMock()
+        mock_settings.google_api_key = "test-key"
         import app.chat.agent as agent_module
 
         agent_module._agent = None
@@ -280,9 +284,11 @@ class TestAgentStructure:
         assert a1 is a2
         agent_module._agent = None
 
+    @patch("app.chat.agent.settings")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_agent_has_nodes(self, mock_client_fn):
+    def test_agent_has_nodes(self, mock_client_fn, mock_settings):
         mock_client_fn.return_value = MagicMock()
+        mock_settings.google_api_key = "test-key"
         from app.chat.agent import create_agent
 
         agent = create_agent()

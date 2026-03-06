@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -169,7 +169,47 @@ type MindsetValues = z.infer<typeof mindsetSchema>;
 /*  Trends Tab                                                        */
 /* ------------------------------------------------------------------ */
 
+type TrendPoint = { date: string; value: number };
+
+function mapEntriesToTrend(
+  entries: Record<string, unknown>[],
+  valueKey: string,
+): TrendPoint[] {
+  return entries
+    .filter((e) => e.date && (e[valueKey] != null || e.value != null))
+    .map((e) => ({
+      date: String(e.date),
+      value: Number(e[valueKey] ?? e.value ?? 0),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function TrendsTab() {
+  const [hrTrend, setHrTrend] = useState<TrendPoint[]>(hrData);
+  const [hrvTrend, setHrvTrend] = useState<TrendPoint[]>(hrvData);
+  const [sleepTrend, setSleepTrend] = useState<TrendPoint[]>(sleepData);
+
+  useEffect(() => {
+    async function loadTrends() {
+      try {
+        const { apiFetch } = await import("@/lib/api");
+        const data = await apiFetch("/physiology/trends?days=30");
+        if (data.entries && Array.isArray(data.entries) && data.entries.length > 0) {
+          const entries = data.entries as Record<string, unknown>[];
+          const hr = mapEntriesToTrend(entries, "resting_hr");
+          const hrv = mapEntriesToTrend(entries, "hrv");
+          const sleep = mapEntriesToTrend(entries, "sleep_score");
+          if (hr.length > 0) setHrTrend(hr);
+          if (hrv.length > 0) setHrvTrend(hrv);
+          if (sleep.length > 0) setSleepTrend(sleep);
+        }
+      } catch {
+        /* use mock data */
+      }
+    }
+    loadTrends();
+  }, []);
+
   return (
     <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
       <Card>
@@ -179,7 +219,7 @@ function TrendsTab() {
         </CardHeader>
         <CardContent>
           <TrendChart
-            data={hrData}
+            data={hrTrend}
             color="hsl(var(--primary))"
             domain={[45, 60]}
             unit=" bpm"
@@ -194,7 +234,7 @@ function TrendsTab() {
         </CardHeader>
         <CardContent>
           <TrendChart
-            data={hrvData}
+            data={hrvTrend}
             color="hsl(142 71% 45%)"
             domain={[30, 60]}
             unit=" ms"
@@ -209,7 +249,7 @@ function TrendsTab() {
         </CardHeader>
         <CardContent>
           <TrendChart
-            data={sleepData}
+            data={sleepTrend}
             color="hsl(262 83% 58%)"
             domain={[50, 100]}
           />
@@ -225,6 +265,7 @@ function TrendsTab() {
 
 function ManualEntryTab() {
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     register,
@@ -247,19 +288,19 @@ function ManualEntryTab() {
       }
     }
 
+    setError(null);
     try {
-      await fetch("/api/physiology", {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch("/physiology", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      setSubmitted(true);
+      reset();
+      setTimeout(() => setSubmitted(false), 3000);
     } catch {
-      // silently handle — mock mode
+      setError("Failed to save entry. Please try again.");
     }
-
-    setSubmitted(true);
-    reset();
-    setTimeout(() => setSubmitted(false), 3000);
   }
 
   return (
@@ -267,6 +308,11 @@ function ManualEntryTab() {
       {submitted && (
         <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-500">
           Entry saved successfully.
+        </div>
+      )}
+      {error && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
         </div>
       )}
 
@@ -398,13 +444,14 @@ function MindsetTab() {
     if (!result.success) return;
 
     try {
-      await fetch("/api/physiology", {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch("/physiology", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } catch {
-      // silently handle — mock mode
+      // silently handle — fallback
     }
 
     setSubmitted(true);

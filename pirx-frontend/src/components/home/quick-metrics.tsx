@@ -15,10 +15,17 @@ const MOCK_METRICS: Metric[] = [
   { label: "Readiness", value: "82", subtext: "/100" },
 ];
 
-export function QuickMetrics() {
+interface QuickMetricsProps {
+  readinessScore?: number | null;
+}
+
+export function QuickMetrics({ readinessScore }: QuickMetricsProps) {
+  const metrics = MOCK_METRICS.map((m) =>
+    m.label === "Readiness" && readinessScore != null ? { ...m, value: String(Math.round(readinessScore)) } : m
+  );
   return (
     <div className="grid grid-cols-4 gap-2">
-      {MOCK_METRICS.map((m) => (
+      {metrics.map((m) => (
         <Card key={m.label}>
           <CardContent className="p-3 text-center space-y-0.5">
             <p className="text-[10px] text-muted-foreground">{m.label}</p>

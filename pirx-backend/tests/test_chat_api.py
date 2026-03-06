@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.main import app
 from app.dependencies import get_current_user
+from app.routers import chat as chat_module
 
 
 @pytest.fixture(autouse=True)
@@ -12,6 +13,7 @@ def mock_auth():
     app.dependency_overrides[get_current_user] = lambda: {"user_id": "test-user", "email": "test@test.com"}
     yield
     app.dependency_overrides.clear()
+    chat_module._threads.clear()
 
 
 @pytest.fixture
@@ -108,3 +110,35 @@ class TestStreamEndpoint:
         r = client.post("/chat/stream", json={"message": "hi"})
         assert r.status_code == 200
         assert "text/event-stream" in r.headers["content-type"]
+
+
+class TestThreadOwnership:
+    def test_user_b_cannot_read_user_a_thread(self, client):
+        """C6: user B should not be able to access user A's thread."""
+        r = client.post("/chat/thread")
+        thread_id = r.json()["thread_id"]
+
+        app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-b", "email": "b@test.com"}
+        r2 = client.get(f"/chat/history?thread_id={thread_id}")
+        assert r2.status_code == 404
+
+    def test_user_b_cannot_delete_user_a_thread(self, client):
+        r = client.post("/chat/thread")
+        thread_id = r.json()["thread_id"]
+
+        app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-b", "email": "b@test.com"}
+        r2 = client.delete(f"/chat/thread/{thread_id}")
+        assert r2.status_code == 404
+
+    @patch("app.chat.agent.get_agent")
+    def test_user_b_cannot_post_to_user_a_thread(self, mock_agent_fn, client):
+        mock_agent = MagicMock()
+        mock_agent.invoke.return_value = {"messages": [AIMessage(content="ok")]}
+        mock_agent_fn.return_value = mock_agent
+
+        r = client.post("/chat", json={"message": "hi"})
+        thread_id = r.json()["thread_id"]
+
+        app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-b", "email": "b@test.com"}
+        r2 = client.post("/chat", json={"message": "hi", "thread_id": thread_id})
+        assert r2.status_code == 403

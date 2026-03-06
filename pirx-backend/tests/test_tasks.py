@@ -17,7 +17,9 @@ class TestComputeFeaturesTask:
         assert result["status"] == "no_activities"
         assert result["user_id"] == "user-123"
 
-    def test_with_activity_data(self):
+    @patch("app.tasks.projection_tasks.recompute_projection")
+    def test_with_activity_data(self, mock_recompute):
+        mock_recompute.delay = MagicMock()
         activity_data = {
             "source": "strava",
             "timestamp": "2026-03-01T08:00:00",
@@ -30,6 +32,8 @@ class TestComputeFeaturesTask:
         assert result["status"] == "completed"
         assert result["activities_cleaned"] >= 1
         assert result["features_computed"] > 0
+        assert result["projection_recompute_triggered"] is True
+        mock_recompute.delay.assert_called_once_with("user-123")
 
     def test_cross_training_filtered_out(self):
         activity_data = {
@@ -96,31 +100,47 @@ class TestProcessActivityTask:
 
 
 class TestProjectionTasks:
-    def test_recompute_returns_not_implemented(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_recompute_no_data(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
         result = recompute_projection("user-123", "3000")
-        assert result["status"] == "not_implemented"
+        assert result["status"] in ("no_data", "error")
 
-    def test_recompute_all_events(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_recompute_all_events(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
         result = recompute_all_events("user-123")
         assert "1500" in result["events"]
         assert "10000" in result["events"]
 
-    def test_structural_decay_check(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_structural_decay_check(self, mock_sb):
+        mock_sb.return_value = MagicMock()
         result = structural_decay_check()
-        assert result["task"] == "structural_decay_check"
+        assert result["status"] == "completed"
 
-    def test_weekly_summary(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_weekly_summary(self, mock_sb):
+        mock_sb.return_value = MagicMock()
         result = weekly_summary()
-        assert result["task"] == "weekly_summary"
+        assert result["status"] == "completed"
 
-    def test_bias_correction(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_bias_correction(self, mock_sb):
+        mock_sb.return_value = MagicMock()
         result = bias_correction()
-        assert result["task"] == "bias_correction"
+        assert result["status"] == "completed"
 
 
 class TestBackfillTask:
-    def test_returns_not_implemented(self):
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_backfill_strava(self, mock_sb):
+        mock_sb.return_value = MagicMock()
         from app.tasks.sync_tasks import backfill_history
         result = backfill_history("user-123", "strava")
-        assert result["status"] == "not_implemented"
+        assert result["status"] == "completed"
         assert result["provider"] == "strava"

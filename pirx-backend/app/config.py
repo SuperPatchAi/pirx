@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     supabase_db_url: str = ""
 
     openai_api_key: str = ""
+    google_api_key: str = ""
 
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/0"

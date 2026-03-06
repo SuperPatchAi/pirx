@@ -68,10 +68,14 @@ class LMCEngine:
 
         lambda_hat, residuals, rank_out, sv = np.linalg.lstsq(F_sub, log_times, rcond=None)
 
-        # Bound lambda1 within population norms
+        # Bound lambda0 (intercept multiplier) near 1.0
         if len(lambda_hat) >= 1:
-            lambda_hat[0] = np.clip(
-                lambda_hat[0],
+            lambda_hat[0] = np.clip(lambda_hat[0], 0.85, 1.15)
+
+        # Bound lambda1 (speed-endurance coefficient) within population norms
+        if len(lambda_hat) >= 2:
+            lambda_hat[1] = np.clip(
+                lambda_hat[1],
                 LAMBDA_BOUNDS["lambda1_min"],
                 LAMBDA_BOUNDS["lambda1_max"],
             )

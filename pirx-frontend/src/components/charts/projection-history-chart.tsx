@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  LineChart,
+  ComposedChart,
   Line,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -16,9 +17,16 @@ interface DataPoint {
   time: number;
 }
 
+interface RangePoint {
+  date: string;
+  low: number;
+  high: number;
+}
+
 interface ProjectionHistoryChartProps {
   data: DataPoint[];
   baselineTime?: number;
+  rangeData?: RangePoint[];
 }
 
 function formatTime(seconds: number): string {
@@ -30,6 +38,7 @@ function formatTime(seconds: number): string {
 export function ProjectionHistoryChart({
   data,
   baselineTime,
+  rangeData,
 }: ProjectionHistoryChartProps) {
   if (data.length === 0) {
     return (
@@ -39,12 +48,41 @@ export function ProjectionHistoryChart({
     );
   }
 
-  const minTime = Math.min(...data.map((d) => d.time)) - 10;
-  const maxTime = Math.max(...data.map((d) => d.time)) + 10;
+  const merged = data.map((d) => {
+    const range = rangeData?.find((r) => r.date === d.date);
+    return {
+      ...d,
+      range: range ? [range.low, range.high] : undefined,
+    };
+  });
+
+  const allValues = [
+    ...data.map((d) => d.time),
+    ...(rangeData?.flatMap((r) => [r.low, r.high]) ?? []),
+  ];
+  const minTime = Math.min(...allValues) - 10;
+  const maxTime = Math.max(...allValues) + 10;
 
   return (
     <ResponsiveContainer width="100%" height={180}>
-      <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+      <ComposedChart
+        data={merged}
+        margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+      >
+        <defs>
+          <linearGradient id="rangeFill" x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor="hsl(var(--primary))"
+              stopOpacity={0.15}
+            />
+            <stop
+              offset="100%"
+              stopColor="hsl(var(--primary))"
+              stopOpacity={0.05}
+            />
+          </linearGradient>
+        </defs>
         <CartesianGrid
           strokeDasharray="3 3"
           stroke="hsl(var(--border))"
@@ -77,10 +115,18 @@ export function ProjectionHistoryChart({
             fontSize: "12px",
           }}
           labelStyle={{ color: "hsl(var(--muted-foreground))" }}
-          formatter={(value: number | undefined) => [
-            value != null ? formatTime(value) : "",
-            "Projected",
-          ]}
+          formatter={(value: number | number[] | undefined, name: string | undefined) => {
+            if (name === "range" && Array.isArray(value)) {
+              return [
+                `${formatTime(value[0])} – ${formatTime(value[1])}`,
+                "Supported Range",
+              ];
+            }
+            if (typeof value === "number") {
+              return [formatTime(value), "Projected"];
+            }
+            return ["", ""];
+          }}
         />
         {baselineTime && (
           <ReferenceLine
@@ -88,6 +134,19 @@ export function ProjectionHistoryChart({
             stroke="hsl(var(--destructive))"
             strokeDasharray="5 5"
             opacity={0.5}
+          />
+        )}
+        {rangeData && rangeData.length > 0 && (
+          <Area
+            type="monotone"
+            dataKey="range"
+            fill="url(#rangeFill)"
+            stroke="hsl(var(--primary))"
+            strokeWidth={0}
+            strokeOpacity={0}
+            fillOpacity={1}
+            activeDot={false}
+            isAnimationActive={false}
           />
         )}
         <Line
@@ -98,7 +157,7 @@ export function ProjectionHistoryChart({
           dot={false}
           activeDot={{ r: 4, fill: "hsl(var(--primary))" }}
         />
-      </LineChart>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }

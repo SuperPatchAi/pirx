@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
   Lightbulb,
   BarChart3,
   Info,
+  Loader2,
 } from "lucide-react";
 import { DriverScoreChart } from "@/components/charts/driver-score-chart";
 
@@ -172,26 +173,120 @@ export default function DriverPage() {
   const router = useRouter();
   const params = useParams();
   const driverName = params.driverName as string;
-  const data = DRIVER_DATA[driverName] || DRIVER_DATA.aerobic_base;
+  const mockData = DRIVER_DATA[driverName] || DRIVER_DATA.aerobic_base;
+
+  const [loading, setLoading] = useState(true);
+  const [driverDetail, setDriverDetail] = useState<{
+    displayName: string;
+    description: string;
+    score: number;
+    trend: "improving" | "stable" | "declining";
+    contribution: number;
+  } | null>(null);
+  const [scoreHistory, setScoreHistory] = useState<{ date: string; score: number }[] | null>(null);
+  const [shapExplanation, setShapExplanation] = useState<{
+    factors: { feature: string; impact: string; direction: "positive" | "negative" }[];
+    insight: string;
+  } | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { apiFetch } = await import("@/lib/api");
+        const [detail, history, explain] = await Promise.allSettled([
+          apiFetch(`/drivers/${encodeURIComponent(driverName)}`),
+          apiFetch(`/drivers/${encodeURIComponent(driverName)}/history?days=42`),
+          apiFetch(`/drivers/${encodeURIComponent(driverName)}/explain`),
+        ]);
+
+        if (detail.status === "fulfilled") {
+          const d = detail.value as {
+            name?: string;
+            display_name?: string;
+            description?: string;
+            score?: number;
+            trend?: string;
+            contribution_seconds?: number;
+          };
+          setDriverDetail({
+            displayName: d.display_name ?? mockData.displayName,
+            description: d.description ?? mockData.description,
+            score: d.score ?? mockData.score,
+            trend: (d.trend as "improving" | "stable" | "declining") ?? mockData.trend,
+            contribution: d.contribution_seconds ?? mockData.contribution,
+          });
+        }
+
+        if (history.status === "fulfilled") {
+          const h = history.value as { points?: Array<{ date: string; score: number }> };
+          const points = h.points ?? [];
+          setScoreHistory(points);
+        }
+
+        if (explain.status === "fulfilled") {
+          const e = explain.value as {
+            top_factors?: Array<{ name: string; impact: number }>;
+            narrative?: string;
+          };
+          if (e.top_factors || e.narrative) {
+            setShapExplanation({
+              factors: (e.top_factors ?? []).map((f) => ({
+                feature: f.name,
+                impact: `${f.impact > 0 ? "+" : ""}${f.impact.toFixed(1)}s`,
+                direction: f.impact >= 0 ? "positive" : "negative",
+              })),
+              insight: e.narrative ?? mockData.insight,
+            });
+          }
+        }
+      } catch {
+        // Use mock on failure
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [driverName]);
+
+  const data = {
+    ...mockData,
+    ...(driverDetail && {
+      displayName: driverDetail.displayName,
+      description: driverDetail.description,
+      score: driverDetail.score,
+      trend: driverDetail.trend,
+      contribution: driverDetail.contribution,
+    }),
+    ...(shapExplanation && {
+      factors: shapExplanation.factors,
+      insight: shapExplanation.insight,
+    }),
+  };
   const trend = trendConfig[data.trend];
   const TrendIcon = trend.icon;
 
-  // TODO: Replace with API data
-  const mockScoreHistory = useMemo(
-    () =>
-      Array.from({ length: 42 }, (_, i) => {
-        const date = new Date(2026, 2, 5);
-        date.setDate(date.getDate() - (41 - i));
-        return {
-          date: date.toISOString().split("T")[0],
-          score: Math.min(
-            100,
-            45 + (i * (data.score - 45)) / 42 + (Math.random() - 0.5) * 5
-          ),
-        };
-      }),
-    [driverName]
-  );
+  const chartData = useMemo(() => {
+    if (scoreHistory && scoreHistory.length > 0) return scoreHistory;
+    return Array.from({ length: 42 }, (_, i) => {
+      const date = new Date(2026, 2, 5);
+      date.setDate(date.getDate() - (41 - i));
+      return {
+        date: date.toISOString().split("T")[0],
+        score: Math.min(
+          100,
+          45 + (i * (data.score - 45)) / 42 + (Math.random() - 0.5) * 5
+        ),
+      };
+    });
+  }, [scoreHistory, data.score]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -252,7 +347,7 @@ export default function DriverPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <DriverScoreChart data={mockScoreHistory} />
+          <DriverScoreChart data={chartData} />
         </CardContent>
       </Card>
 

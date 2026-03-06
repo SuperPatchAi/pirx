@@ -2,6 +2,7 @@
 
 import { useRouter, useParams } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,7 +47,13 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
   );
 }
 
-function WelcomeStep({ onNext }: { onNext: () => void }) {
+function WelcomeStep({
+  onNext,
+  userEmail,
+}: {
+  onNext: () => void;
+  userEmail?: string | null;
+}) {
   return (
     <motion.div
       variants={pageVariants}
@@ -66,6 +73,9 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       </motion.div>
       <div className="space-y-3">
         <h1 className="text-3xl font-bold tracking-tight">PIRX</h1>
+        {userEmail && (
+          <p className="text-sm text-muted-foreground">Signed in as {userEmail}</p>
+        )}
         <p className="text-lg text-muted-foreground">
           Your running, projected forward
         </p>
@@ -81,6 +91,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
   );
 }
 
+// TODO: Wire to real OAuth (Strava/Terra) when available
 const WEARABLES = [
   { id: "strava", name: "Strava", icon: Activity, connected: false },
   { id: "garmin", name: "Garmin", icon: Watch, connected: false },
@@ -181,6 +192,7 @@ function ConnectStep({
 function LoadingStep({ onNext }: { onNext: () => void }) {
   const [progress, setProgress] = useState(0);
 
+  // TODO: Poll API endpoint for backfill progress instead of mock
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
     intervalId = setInterval(() => {
@@ -245,7 +257,7 @@ function BaselineStep({
   const [minutes, setMinutes] = useState("20");
   const [seconds, setSeconds] = useState("00");
 
-  // Mock detected baseline
+  // TODO: Fetch detected baseline from API
   const detected = { event: "5000", time: "20:42", date: "Feb 15, 2026" };
 
   return (
@@ -352,7 +364,7 @@ function BaselineStep({
   );
 }
 
-// Mock projection data for the reveal
+// TODO: Fetch first projection from API
 const MOCK_PROJECTIONS = [
   { event: "1500m", time: "5:42", change: "-3s" },
   { event: "3K", time: "12:18", change: "-8s" },
@@ -411,7 +423,14 @@ function RevealStep({ onFinish }: { onFinish: () => void }) {
 export default function OnboardingStepPage() {
   const router = useRouter();
   const params = useParams();
+  const { user, loading } = useAuth();
   const step = Number(params.step) || 1;
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
 
   const goTo = (s: number) => router.push(`/onboarding/${s}`);
   const onNext = () => {
@@ -422,12 +441,30 @@ export default function OnboardingStepPage() {
   };
   const onFinish = () => router.push("/dashboard");
 
+  if (loading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="min-h-[80vh] flex flex-col">
       <StepIndicator current={step} total={TOTAL_STEPS} />
       <div className="flex-1">
         <AnimatePresence mode="wait">
-          {step === 1 && <WelcomeStep key="welcome" onNext={onNext} />}
+          {step === 1 && (
+            <WelcomeStep
+              key="welcome"
+              onNext={onNext}
+              userEmail={user.email}
+            />
+          )}
           {step === 2 && (
             <ConnectStep key="connect" onNext={onNext} onBack={onBack} />
           )}

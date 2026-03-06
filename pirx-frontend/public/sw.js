@@ -1,10 +1,45 @@
-// PIRX Service Worker for Push Notifications
+// PIRX Service Worker for Push Notifications & Offline Caching
+const CACHE_NAME = "pirx-v1";
+const PROJECTION_CACHE = "pirx-projections";
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE_NAME && k !== PROJECTION_CACHE)
+            .map((k) => caches.delete(k))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  if (url.pathname.includes("/projection") && event.request.method === "GET") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(PROJECTION_CACHE).then((cache) => {
+            cache.put(event.request, clone);
+          });
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
 });
 
 self.addEventListener("push", (event) => {

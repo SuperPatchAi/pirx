@@ -19,7 +19,7 @@ EVENT_DISTANCES_M = {
 }
 
 DEFAULT_EXPONENT = 1.06
-EXPONENT_BOUNDS = (1.10, 1.15)  # Population norms from Blythe & Király
+EXPONENT_BOUNDS = (1.01, 1.15)  # Individual Riegel exponents (speed-type to endurance-type)
 PHASE_TRANSITION_DISTANCE = 5000  # meters
 
 
@@ -73,7 +73,7 @@ class EventScaler:
         # Volume modifier: more mileage = lower exponent
         # Baseline 40km/week = 1.06, each +10km reduces by 0.005
         k = max(0.98, 1.06 - 0.005 * ((weekly_km - 40) / 10))
-        k = min(k, 1.15)  # bound within population norms
+        k = min(k, 1.15)  # bound within Riegel exponent range
 
         return EventScaler.riegel_scale(known_time_s, known_distance_m, target_distance_m, k)
 

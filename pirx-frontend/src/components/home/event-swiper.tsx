@@ -18,17 +18,46 @@ const MOCK_EVENTS: EventCard[] = [
   { event: "10000", displayName: "10K", projectedTime: "43:15", change: "-12s" },
 ];
 
-export function EventSwiper() {
+interface EventSwiperProps {
+  apiData?: EventCard[] | null;
+  selectedEvent?: string;
+  onEventSelect?: (event: string) => void;
+}
+
+export function EventSwiper({
+  apiData,
+  selectedEvent,
+  onEventSelect,
+}: EventSwiperProps) {
+  const events = apiData ?? MOCK_EVENTS;
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-muted-foreground">All Events</h3>
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
-        {MOCK_EVENTS.map((e) => (
-          <Link key={e.event} href={`/event/${e.event}`} className="flex-shrink-0">
-            <Card className="w-[140px] hover:border-primary/50 transition-colors">
+        {events.map((e) => (
+          <Link
+            key={e.event}
+            href={`/event/${e.event}`}
+            className="flex-shrink-0"
+            onClick={(ev) => {
+              if (onEventSelect) {
+                ev.preventDefault();
+                onEventSelect(e.event);
+              }
+            }}
+          >
+            <Card
+              className={`w-[140px] transition-colors ${
+                selectedEvent === e.event
+                  ? "border-primary ring-1 ring-primary/40"
+                  : "hover:border-primary/50"
+              }`}
+            >
               <CardContent className="p-3 space-y-2">
                 <p className="text-xs text-muted-foreground">{e.displayName}</p>
-                <p className="text-xl font-bold tabular-nums">{e.projectedTime}</p>
+                <p className="text-xl font-bold tabular-nums">
+                  {e.projectedTime}
+                </p>
                 <Badge variant="secondary" className="text-xs">
                   {e.change}
                 </Badge>

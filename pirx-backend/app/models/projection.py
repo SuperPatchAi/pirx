@@ -20,6 +20,8 @@ class ProjectionHistoryPoint(BaseModel):
     date: str
     projected_time_seconds: float
     event: str
+    range_low: Optional[float] = None
+    range_high: Optional[float] = None
 
 
 class ProjectionHistoryResponse(BaseModel):

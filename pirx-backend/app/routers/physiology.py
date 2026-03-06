@@ -2,11 +2,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import random
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user
 from app.services.supabase_client import SupabaseService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,7 +85,8 @@ async def create_physiology_entry(
             "entry_id": result.data[0]["entry_id"] if result.data else None,
         }
     except Exception:
-        return {"status": "created", "entry_id": "mock-id"}
+        logger.exception("Failed to insert physiology entry for user %s", user["user_id"])
+        raise HTTPException(status_code=500, detail="Failed to save physiology entry")
 
 
 @router.get("/latest")

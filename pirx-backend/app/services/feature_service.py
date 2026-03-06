@@ -13,7 +13,7 @@ ROLLING_WINDOW_WEIGHTS = {
 FEATURE_DOMAINS = {
     "volume": [
         "rolling_distance_7d", "rolling_distance_21d", "rolling_distance_42d",
-        "sessions_per_week", "long_run_count",
+        "rolling_distance_90d", "sessions_per_week", "long_run_count",
     ],
     "intensity": [
         "z1_pct", "z2_pct", "z3_pct", "z4_pct", "z5_pct",
@@ -39,12 +39,14 @@ class FeatureService:
     def compute_all_features(
         activities: list[NormalizedActivity],
         reference_date: Optional[datetime] = None,
+        user_id: Optional[str] = None,
     ) -> dict[str, Optional[float]]:
-        """Compute all 27 features from a list of cleaned activities.
+        """Compute all features from a list of cleaned activities.
 
         Args:
             activities: Cleaned running activities, sorted by timestamp
             reference_date: Date to compute features relative to (default: now)
+            user_id: User ID for fetching physiological data (optional)
 
         Returns:
             Dict of feature_name -> value (None if insufficient data)
@@ -59,7 +61,7 @@ class FeatureService:
         features.update(FeatureService._compute_intensity(activities, reference_date))
         features.update(FeatureService._compute_efficiency(activities, reference_date))
         features.update(FeatureService._compute_consistency(activities, reference_date))
-        features.update(FeatureService._compute_physiological())
+        features.update(FeatureService._compute_physiological(user_id))
         return features
 
     @staticmethod
@@ -81,10 +83,12 @@ class FeatureService:
         w7 = FeatureService._filter_window(activities, ref, 7)
         w21 = FeatureService._filter_window(activities, ref, 21)
         w42 = FeatureService._filter_window(activities, ref, 42)
+        w90 = FeatureService._filter_window(activities, ref, 90)
 
         dist_7 = sum(a.distance_meters for a in w7)
         dist_21 = sum(a.distance_meters for a in w21)
         dist_42 = sum(a.distance_meters for a in w42)
+        dist_90 = sum(a.distance_meters for a in w90)
 
         sessions_per_week = len(w7)
 
@@ -94,6 +98,7 @@ class FeatureService:
             "rolling_distance_7d": dist_7,
             "rolling_distance_21d": dist_21,
             "rolling_distance_42d": dist_42,
+            "rolling_distance_90d": dist_90,
             "sessions_per_week": sessions_per_week,
             "long_run_count": long_run_count,
         }
@@ -294,8 +299,10 @@ class FeatureService:
         chronic_alpha = 2.0 / (chronic_days + 1)
 
         def ewma(arr: np.ndarray, alpha: float) -> float:
-            result = arr[0]
-            for val in arr[1:]:
+            non_zero = arr[arr > 0]
+            seed = float(np.mean(non_zero)) if len(non_zero) > 0 else 0.0
+            result = seed
+            for val in arr:
                 result = alpha * val + (1 - alpha) * result
             return float(result)
 
@@ -311,16 +318,44 @@ class FeatureService:
 
         return float(acute_load / chronic_load)
 
-    # --- Physiological Domain (stubs) ---
+    # --- Physiological Domain ---
     @staticmethod
-    def _compute_physiological() -> dict:
-        """Physiological features come from wearable/manual physiology data.
-        Stubbed — will be implemented when physiology ingestion is complete."""
-        return {
-            "resting_hr_trend": None,
-            "hrv_trend": None,
-            "sleep_score_trend": None,
-        }
+    def _compute_physiological(user_id: str | None = None) -> dict:
+        """Physiological features from wearable/manual physiology data.
+
+        Computes 7-day trends for resting HR, HRV, and sleep score.
+        Falls back to None when no data is available.
+        """
+        defaults = {"resting_hr_trend": None, "hrv_trend": None, "sleep_score_trend": None}
+        if not user_id:
+            return defaults
+        try:
+            from app.services.supabase_client import SupabaseService
+            db = SupabaseService()
+            entries = db.get_recent_physiology(user_id, limit=14)
+            if not entries or len(entries) < 3:
+                return defaults
+
+            hr_vals = [e["resting_hr"] for e in entries if e.get("resting_hr") is not None]
+            hrv_vals = [e["hrv"] for e in entries if e.get("hrv") is not None]
+            sleep_vals = [e["sleep_score"] for e in entries if e.get("sleep_score") is not None]
+
+            def trend_slope(vals: list) -> float | None:
+                if len(vals) < 3:
+                    return None
+                recent = vals[:7] if len(vals) >= 7 else vals
+                older = vals[7:] if len(vals) >= 7 else vals[:len(vals)//2]
+                if not recent or not older:
+                    return None
+                return float(np.mean(recent) - np.mean(older))
+
+            return {
+                "resting_hr_trend": trend_slope(hr_vals),
+                "hrv_trend": trend_slope(hrv_vals),
+                "sleep_score_trend": trend_slope(sleep_vals),
+            }
+        except Exception:
+            return defaults
 
     @staticmethod
     def compute_weighted_feature_score(features: dict) -> Optional[float]:

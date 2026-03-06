@@ -26,14 +26,27 @@ const trendConfig = {
   declining: { icon: TrendingDown, color: "text-red-500" },
 };
 
-export function DriverStrip() {
+export interface DriverApiItem {
+  name: string;
+  displayName: string;
+  contributionSeconds: number;
+  trend: "improving" | "stable" | "declining";
+  score: number;
+}
+
+interface DriverStripProps {
+  apiData?: DriverApiItem[] | null;
+}
+
+export function DriverStrip({ apiData }: DriverStripProps) {
+  const drivers = apiData ?? MOCK_DRIVERS;
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-muted-foreground">
         What&apos;s Driving Your Improvement
       </h3>
       <div className="grid grid-cols-5 gap-2">
-        {MOCK_DRIVERS.map((d) => {
+        {drivers.map((d) => {
           const { icon: TrendIcon, color } = trendConfig[d.trend];
           return (
             <Link key={d.name} href={`/driver/${d.name}`}>

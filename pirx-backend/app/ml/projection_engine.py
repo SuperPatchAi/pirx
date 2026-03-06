@@ -163,53 +163,62 @@ class ProjectionEngine:
 
         return projection_state, driver_states
 
+    # Per-feature baselines for normalization (each feature scored independently)
+    FEATURE_BASELINES = {
+        "rolling_distance_7d": 30000,
+        "rolling_distance_21d": 85000,
+        "rolling_distance_42d": 160000,
+        "z1_pct": 0.40,
+        "z2_pct": 0.30,
+        "z4_pct": 0.12,
+        "z5_pct": 0.05,
+        "threshold_density_min_week": 15,
+        "speed_exposure_min_week": 5,
+        "hr_drift_sustained": 0.05,
+        "late_session_pace_decay": 0.04,
+        "matched_hr_band_pace": 280,
+        "weekly_load_stddev": 5000,
+        "block_variance": 4000,
+        "session_density_stability": 1.0,
+        "acwr_4w": 1.0,
+    }
+
+    INVERSE_FEATURES = {
+        "hr_drift_sustained", "late_session_pace_decay", "matched_hr_band_pace",
+        "weekly_load_stddev", "block_variance", "session_density_stability",
+    }
+
     def _compute_driver_scores(self, features: dict) -> dict[str, float]:
-        """Compute 0-100 score for each driver from features."""
+        """Compute 0-100 score for each driver from features.
+
+        Each feature is individually normalized to 0-100 using per-feature
+        baselines, then the driver score is the mean of its feature scores.
+        This avoids mixing incompatible units (meters, percentages, sec/km).
+        """
         scores = {}
         for driver, feature_names in DRIVER_FEATURE_MAP.items():
-            values = []
+            feature_scores = []
             for f in feature_names:
                 v = features.get(f)
-                if v is not None:
-                    values.append(v)
+                if v is None:
+                    continue
+                baseline = self.FEATURE_BASELINES.get(f)
+                if baseline is None or baseline == 0:
+                    feature_scores.append(50.0)
+                    continue
 
-            if not values:
-                scores[driver] = 50.0  # neutral score when no data
+                ratio = v / baseline
+                if f in self.INVERSE_FEATURES:
+                    ratio = 2.0 - min(ratio, 2.0)
+
+                feature_scores.append(float(np.clip(50.0 * ratio, 0, 100)))
+
+            if not feature_scores:
+                scores[driver] = 50.0
             else:
-                raw = np.mean(values)
-                scores[driver] = self._normalize_score(driver, raw)
+                scores[driver] = float(np.mean(feature_scores))
 
         return scores
-
-    def _normalize_score(self, driver: str, raw_value: float) -> float:
-        """Normalize a raw feature aggregate to 0-100 scale.
-
-        Uses driver-specific scaling. Scores above 50 = above average.
-        """
-        # Reference baselines for "average" runner (calibrated from population data)
-        baselines = {
-            "aerobic_base": 30000,      # 30km/week typical volume
-            "threshold_density": 15,     # 15 min/week Z4
-            "speed_exposure": 5,         # 5 min/week Z5
-            "running_economy": 0.05,     # 5% drift typical
-            "load_consistency": 5000,    # stddev of weekly load
-        }
-
-        baseline = baselines.get(driver, 1)
-        if baseline == 0:
-            return 50.0
-
-        ratio = raw_value / baseline
-
-        # For consistency, lower stddev = better (invert)
-        if driver == "load_consistency":
-            ratio = 2.0 - min(ratio, 2.0)
-        # For efficiency, lower drift = better (invert)
-        elif driver == "running_economy":
-            ratio = 2.0 - min(ratio, 2.0)
-
-        score = 50.0 * ratio
-        return float(np.clip(score, 0, 100))
 
     def _compute_total_improvement(
         self, scores: dict[str, float], baseline_time_s: float

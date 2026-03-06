@@ -42,7 +42,7 @@ class TestFeatureDomainsCoverage:
             all_feature_names.extend(domain_features)
         for name in all_feature_names:
             assert name in features, f"Missing feature: {name}"
-        assert len(features) == 24
+        assert len(features) == 25
 
 
 class TestVolumeFeatures:

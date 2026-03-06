@@ -66,11 +66,14 @@ class CleaningService:
             if runner_avg_pace is not None and pace > runner_avg_pace * 1.5:
                 return None  # Much slower than usual — likely mislabeled
 
-        # Filter 7: Missing elevation on long runs (GPS data quality)
-        if (activity.elevation_gain_m is not None
+        # Filter 7: Missing elevation on long outdoor runs (GPS data quality)
+        # Skip this filter for treadmill/indoor runs which legitimately have 0 elevation
+        is_indoor = getattr(activity, "source", "") in ("treadmill", "indoor")
+        if (not is_indoor
+            and activity.elevation_gain_m is not None
             and activity.elevation_gain_m == 0
-            and activity.distance_meters > 5000):
-            return None  # Zero elevation on 5K+ run suggests bad GPS
+            and activity.distance_meters > 10000):
+            return None  # Zero elevation on 10K+ outdoor run suggests bad GPS
 
         return activity
 

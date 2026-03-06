@@ -116,3 +116,27 @@ class TestEnvironmentalAdjustment:
         t_20 = EventScaler.environmental_adjustment(1200, 20.0)
         t_30 = EventScaler.environmental_adjustment(1200, 30.0)
         assert t_30 > t_20
+
+
+class TestRiegelExponentBounds:
+    def test_speed_type_runner_exponent_below_110(self):
+        """C3 fix: a speed-type runner should get exponent < 1.10 (not clamped up).
+
+        1500m in 240s and 5000m in 870s gives exponent ~1.07.
+        Before the fix (lower bound 1.10), this would have been clamped to 1.10.
+        """
+        k = EventScaler.compute_individual_exponent([
+            {"distance_m": 1500, "time_s": 240.0},
+            {"distance_m": 5000, "time_s": 870.0},
+        ])
+        assert k is not None
+        assert k < 1.10, f"Speed-type exponent {k} should not be clamped to >= 1.10"
+
+    def test_endurance_type_runner_exponent_above_110(self):
+        """Endurance-type runner gets exponent above 1.10."""
+        k = EventScaler.compute_individual_exponent([
+            {"distance_m": 5000, "time_s": 1200.0},
+            {"distance_m": 42195, "time_s": 12600.0},
+        ])
+        assert k is not None
+        assert k >= 1.06, f"Endurance exponent {k} should be >= 1.06"

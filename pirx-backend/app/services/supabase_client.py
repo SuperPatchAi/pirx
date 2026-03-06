@@ -67,6 +67,20 @@ class SupabaseService:
         )
         return result.data
 
+    def get_recent_activities(self, user_id: str, days: int = 90) -> list[dict]:
+        from datetime import datetime, timezone, timedelta
+
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        result = (
+            self.client.table("activities")
+            .select("*")
+            .eq("user_id", user_id)
+            .gte("started_at", since)
+            .order("started_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+
     def get_race_activities(self, user_id: str) -> list[dict]:
         result = (
             self.client.table("activities")

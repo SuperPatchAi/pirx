@@ -1,0 +1,38 @@
+# === Web Framework ===
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-multipart
+python-jose[cryptography]
+
+# === Database ===
+supabase
+asyncpg
+sqlalchemy
+
+# === HTTP Client ===
+httpx
+
+# === Task Queue ===
+celery[redis]
+redis
+
+# === ML Core ===
+numpy
+pandas
+scipy
+scikit-learn
+joblib
+
+# === Wearable Data Parsing ===
+fitparse
+gpxpy
+
+# === Monitoring ===
+sentry-sdk[fastapi]
+
+# === Testing ===
+pytest
+pytest-asyncio
+pytest-cov

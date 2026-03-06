@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+pirx-frontend/node_modules/
+pirx-backend/venv/
+
+# Next.js build
+pirx-frontend/.next/
+pirx-frontend/out/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+pirx-frontend/.env.local
+pirx-backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+pirx-frontend/coverage/
+pirx-backend/htmlcov/
+pirx-backend/.coverage
+.pytest_cache/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Docker
+*.log
+
+# ML artifacts (large files)
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.h5
+
+# Misc
+*.bak
+*.tmp

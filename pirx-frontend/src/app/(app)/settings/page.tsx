@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -134,6 +134,14 @@ function formatSyncTime(iso: string | null): string {
 }
 
 export default function SettingsPage() {
+  return (
+    <Suspense>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const { user } = useAuth();
   const { permission, supported, subscribed, requestPermission, subscribeToPush, unsubscribeFromPush } = useNotifications();
   const supabase = createClient();

@@ -55,7 +55,7 @@ services:
     runtime: python
     rootDir: pirx-backend
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.tasks worker --loglevel=info --concurrency=2
+    startCommand: celery -A app.tasks worker --loglevel=info --concurrency=2 -Q celery,sync,projection
     plan: starter
     envVars:
       - key: PYTHON_VERSION

@@ -1,13 +1,23 @@
+import logging
+import os
+
 from celery import Celery
 from celery.schedules import crontab
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
+broker = settings.celery_broker_url or settings.redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+backend = settings.celery_result_backend or settings.redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+logger.info("Celery broker_url: %s", broker[:20] + "..." if len(broker) > 20 else broker)
+
 celery_app = Celery("pirx")
 celery_app.config_from_object(
     {
-        "broker_url": settings.celery_broker_url,
-        "result_backend": settings.celery_result_backend,
+        "broker_url": broker,
+        "result_backend": backend,
         "task_serializer": "json",
         "result_serializer": "json",
         "accept_content": ["json"],

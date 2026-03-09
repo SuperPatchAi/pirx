@@ -28,7 +28,7 @@ async def get_sync_status(user: dict = Depends(get_current_user)):
         return {
             "connections": [
                 {
-                    "provider": c.get("provider", "unknown"),
+                    "provider": c.get("provider", "unknown").lower(),
                     "connected": c.get("is_active", False),
                     "last_sync": c.get("last_sync_at"),
                 }
@@ -195,10 +195,11 @@ async def terra_webhook(request: Request):
         if payload.user.reference_id:
             try:
                 db = SupabaseService()
+                provider_name = (payload.user.provider or "terra").lower()
                 db.client.table("wearable_connections").upsert(
                     {
                         "user_id": payload.user.reference_id,
-                        "provider": payload.user.provider or "terra",
+                        "provider": provider_name,
                         "terra_user_id": payload.user.user_id,
                         "is_active": True,
                     },

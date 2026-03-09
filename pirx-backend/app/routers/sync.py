@@ -186,7 +186,7 @@ async def terra_webhook(request: Request):
         )
 
     payload = TerraWebhookPayload(**(await request.json()))
-    logger.info(
+    logger.warning(
         "Terra webhook received: type=%s status=%s user=%s data_count=%d",
         payload.type,
         payload.status,
@@ -224,7 +224,7 @@ async def terra_webhook(request: Request):
                 normalized.append(TerraService.normalize_activity(activity_data))
             except Exception:
                 logger.exception("Failed to normalize Terra activity")
-        logger.info("Normalized %d Terra activities", len(normalized))
+        logger.warning("Normalized %d Terra activities", len(normalized))
 
         if normalized and payload.user and payload.user.reference_id:
             user_id = payload.user.reference_id
@@ -253,7 +253,7 @@ async def terra_webhook(request: Request):
                         })
                     else:
                         skipped += 1
-                        logger.debug(
+                        logger.warning(
                             "Skipped activity: cleaned=%s dur=%s",
                             cleaned is not None,
                             cleaned.duration_seconds if cleaned else None,
@@ -261,7 +261,7 @@ async def terra_webhook(request: Request):
                 except Exception:
                     logger.exception("Failed to insert Terra activity for user %s", user_id)
 
-            logger.info(
+            logger.warning(
                 "Terra activity webhook processed: user=%s stored=%d skipped=%d normalized=%d",
                 user_id, stored, skipped, len(normalized),
             )

@@ -90,12 +90,17 @@ class TerraService:
         The signed payload is: <raw_body>.<timestamp>
         """
         if not settings.terra_webhook_secret:
+            logger.warning("TERRA_WEBHOOK_SECRET not set — skipping signature check")
             return True
         try:
             parts = dict(p.split("=", 1) for p in signature.split(",") if "=" in p)
             timestamp = parts.get("t", "")
             v1_hash = parts.get("v1", "")
             if not timestamp or not v1_hash:
+                logger.warning(
+                    "Webhook signature missing t or v1: sig=%s",
+                    signature[:80],
+                )
                 return False
             signed_payload = payload_body + b"." + timestamp.encode()
             expected = hmac.new(
@@ -103,7 +108,16 @@ class TerraService:
                 signed_payload,
                 hashlib.sha256,
             ).hexdigest()
-            return hmac.compare_digest(expected, v1_hash)
+            match = hmac.compare_digest(expected, v1_hash)
+            if not match:
+                logger.warning(
+                    "Webhook signature mismatch: expected=%s got=%s secret_len=%d body_len=%d",
+                    expected[:16] + "...",
+                    v1_hash[:16] + "...",
+                    len(settings.terra_webhook_secret),
+                    len(payload_body),
+                )
+            return match
         except Exception:
             logger.exception("Failed to verify Terra webhook signature")
             return False

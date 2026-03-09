@@ -233,30 +233,30 @@ async def terra_webhook(request: Request):
             skipped = 0
             for raw_act, activity in zip(payload.data, normalized):
                 try:
-                    cleaned = CleaningService.clean_activity(activity)
-                    if cleaned and cleaned.duration_seconds and cleaned.duration_seconds >= 60:
+                    if activity.duration_seconds and activity.duration_seconds >= 60:
                         stored += 1
                         db.insert_activity(user_id, {
-                            "source": cleaned.source or "terra",
+                            "source": activity.source or "terra",
                             "external_id": str(raw_act.get("id", "")),
-                            "timestamp": cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat(),
-                            "started_at": cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat(),
-                            "duration_seconds": cleaned.duration_seconds,
-                            "distance_meters": cleaned.distance_meters,
-                            "avg_hr": cleaned.avg_hr,
-                            "max_hr": cleaned.max_hr,
-                            "avg_pace_sec_per_km": cleaned.avg_pace_sec_per_km,
-                            "elevation_gain_m": cleaned.elevation_gain_m,
-                            "calories": cleaned.calories,
-                            "activity_type": cleaned.activity_type,
-                            "hr_zones": cleaned.hr_zones,
+                            "timestamp": activity.timestamp.isoformat() if activity.timestamp else datetime.now(timezone.utc).isoformat(),
+                            "started_at": activity.timestamp.isoformat() if activity.timestamp else datetime.now(timezone.utc).isoformat(),
+                            "duration_seconds": activity.duration_seconds,
+                            "distance_meters": activity.distance_meters,
+                            "avg_hr": activity.avg_hr,
+                            "max_hr": activity.max_hr,
+                            "avg_pace_sec_per_km": activity.avg_pace_sec_per_km,
+                            "elevation_gain_m": activity.elevation_gain_m,
+                            "calories": activity.calories,
+                            "activity_type": activity.activity_type,
+                            "hr_zones": activity.hr_zones,
                         })
                     else:
                         skipped += 1
                         logger.warning(
-                            "Skipped activity: cleaned=%s dur=%s",
-                            cleaned is not None,
-                            cleaned.duration_seconds if cleaned else None,
+                            "Skipped activity: type=%s dur=%s dist=%s",
+                            activity.activity_type,
+                            activity.duration_seconds,
+                            activity.distance_meters,
                         )
                 except Exception:
                     logger.exception("Failed to insert Terra activity for user %s", user_id)

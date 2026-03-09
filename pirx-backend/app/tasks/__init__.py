@@ -30,6 +30,13 @@ celery_app.config_from_object(
         "result_backend": backend,
         "broker_use_ssl": _ssl_opts,
         "redis_backend_use_ssl": _ssl_opts,
+        "include": [
+            "app.tasks.sync_tasks",
+            "app.tasks.projection_tasks",
+            "app.tasks.feature_engineering",
+            "app.tasks.accuracy_tasks",
+            "app.tasks.social_tasks",
+        ],
         "task_serializer": "json",
         "result_serializer": "json",
         "accept_content": ["json"],

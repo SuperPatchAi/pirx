@@ -2,8 +2,8 @@ services:
   - type: web
     name: pirx-backend
     runtime: docker
+    rootDir: pirx-backend
     dockerfilePath: ./Dockerfile
-    dockerContext: ./pirx-backend
     plan: starter
     healthCheckPath: /health
     envVars:
@@ -48,8 +48,8 @@ services:
   - type: worker
     name: pirx-celery-worker
     runtime: docker
+    rootDir: pirx-backend
     dockerfilePath: ./Dockerfile
-    dockerContext: ./pirx-backend
     plan: starter
     dockerCommand: celery -A app.tasks worker --loglevel=info --concurrency=2
     envVars:

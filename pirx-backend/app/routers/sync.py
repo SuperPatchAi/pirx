@@ -121,6 +121,17 @@ async def disconnect_wearable(
                 )
         except Exception:
             logger.warning("Could not revoke Strava token for user %s", user["user_id"])
+    elif provider in TERRA_PROVIDERS:
+        try:
+            connections = db.get_wearable_connections(user["user_id"])
+            terra_conn = next(
+                (c for c in connections if c.get("provider") == provider and c.get("terra_user_id")),
+                None,
+            )
+            if terra_conn:
+                await terra_service.deauthenticate_user(terra_conn["terra_user_id"])
+        except Exception:
+            logger.warning("Could not deauthenticate Terra user for %s provider %s", user["user_id"], provider)
 
     return {"provider": provider, "status": "disconnected"}
 

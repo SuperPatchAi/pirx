@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useTourStore } from "@/stores/tour-store";
@@ -165,6 +165,8 @@ export default function SettingsPage() {
   const [coachAccessLoading, setCoachAccessLoading] = useState(true);
   const [coachActionLoading, setCoachActionLoading] = useState<string | null>(null);
 
+  const searchParams = useSearchParams();
+
   const fetchConnections = useCallback(async () => {
     try {
       const data = await apiFetch("/sync/status");
@@ -238,6 +240,21 @@ export default function SettingsPage() {
     fetchAdjuncts();
     fetchCoachAccess();
   }, [fetchConnections, fetchBaseline, fetchPreferences, fetchAdjuncts, fetchCoachAccess]);
+
+  useEffect(() => {
+    const connectedProvider = searchParams.get("connected");
+    const errorProvider = searchParams.get("error");
+    if (connectedProvider) {
+      const name = PROVIDER_META[connectedProvider]?.name ?? connectedProvider;
+      toast.success(`${name} connected successfully`);
+      fetchConnections();
+      router.replace("/settings", { scroll: false });
+    } else if (errorProvider) {
+      const name = PROVIDER_META[errorProvider]?.name ?? errorProvider;
+      toast.error(`Failed to connect ${name}`);
+      router.replace("/settings", { scroll: false });
+    }
+  }, [searchParams, router, fetchConnections]);
 
   const mergedConnections = ALL_PROVIDERS.map((provider) => {
     const live = connections.find((c) => c.provider === provider);

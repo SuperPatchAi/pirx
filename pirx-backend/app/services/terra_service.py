@@ -84,15 +84,29 @@ class TerraService:
 
     @staticmethod
     def verify_webhook_signature(payload_body: bytes, signature: str) -> bool:
-        """Verify Terra webhook signature using HMAC-SHA256."""
+        """Verify Terra webhook signature using HMAC-SHA256.
+
+        Terra sends signatures in the format: t=<timestamp>,v1=<hex_hash>
+        The signed payload is: <raw_body>.<timestamp>
+        """
         if not settings.terra_webhook_secret:
             return True
-        expected = hmac.new(
-            settings.terra_webhook_secret.encode(),
-            payload_body,
-            hashlib.sha256,
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+        try:
+            parts = dict(p.split("=", 1) for p in signature.split(",") if "=" in p)
+            timestamp = parts.get("t", "")
+            v1_hash = parts.get("v1", "")
+            if not timestamp or not v1_hash:
+                return False
+            signed_payload = payload_body + b"." + timestamp.encode()
+            expected = hmac.new(
+                settings.terra_webhook_secret.encode(),
+                signed_payload,
+                hashlib.sha256,
+            ).hexdigest()
+            return hmac.compare_digest(expected, v1_hash)
+        except Exception:
+            logger.exception("Failed to verify Terra webhook signature")
+            return False
 
     @staticmethod
     def normalize_activity(terra_activity: dict) -> NormalizedActivity:

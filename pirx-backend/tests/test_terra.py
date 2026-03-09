@@ -1,3 +1,8 @@
+import hashlib
+import hmac
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from app.services.terra_service import (
@@ -116,6 +121,73 @@ class TestWebhookSignatureVerification:
         """In dev mode with no secret configured, always returns True."""
         assert TerraService.verify_webhook_signature(b"test", "any") is True
 
+    def test_verify_valid_signature(self):
+        """Correctly verifies a valid Terra t=,v1= signature."""
+        secret = "test-secret-key"
+        body = b'{"type":"activity"}'
+        timestamp = "1723808700"
+        signed_payload = body + b"." + timestamp.encode()
+        expected_hash = hmac.new(
+            secret.encode(), signed_payload, hashlib.sha256
+        ).hexdigest()
+        signature = f"t={timestamp},v1={expected_hash}"
+
+        with patch("app.services.terra_service.settings") as mock_settings:
+            mock_settings.terra_webhook_secret = secret
+            assert TerraService.verify_webhook_signature(body, signature) is True
+
+    def test_verify_rejects_invalid_signature(self):
+        """Rejects a tampered signature."""
+        secret = "test-secret-key"
+        body = b'{"type":"activity"}'
+        signature = "t=1723808700,v1=deadbeefdeadbeefdeadbeefdeadbeef"
+
+        with patch("app.services.terra_service.settings") as mock_settings:
+            mock_settings.terra_webhook_secret = secret
+            assert TerraService.verify_webhook_signature(body, signature) is False
+
+    def test_verify_rejects_malformed_signature(self):
+        """Rejects a signature without the expected t= and v1= fields."""
+        secret = "test-secret-key"
+        with patch("app.services.terra_service.settings") as mock_settings:
+            mock_settings.terra_webhook_secret = secret
+            assert TerraService.verify_webhook_signature(b"test", "garbage") is False
+
+    def test_verify_rejects_empty_signature(self):
+        """Rejects an empty signature string."""
+        with patch("app.services.terra_service.settings") as mock_settings:
+            mock_settings.terra_webhook_secret = "secret"
+            assert TerraService.verify_webhook_signature(b"test", "") is False
+
+
+class TestTerraDeauthentication:
+    @pytest.mark.asyncio
+    async def test_deauthenticate_calls_terra_api(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client = AsyncMock()
+        mock_client.delete = AsyncMock(return_value=mock_response)
+
+        service = TerraService(http_client=mock_client)
+        result = await service.deauthenticate_user("terra-user-123")
+
+        assert result is True
+        mock_client.delete.assert_called_once()
+        call_kwargs = mock_client.delete.call_args
+        assert "terra-user-123" in str(call_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_deauthenticate_returns_false_on_failure(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_client = AsyncMock()
+        mock_client.delete = AsyncMock(return_value=mock_response)
+
+        service = TerraService(http_client=mock_client)
+        result = await service.deauthenticate_user("terra-user-missing")
+
+        assert result is False
+
 
 class TestTerraWebhookEndpoint:
     def test_terra_webhook_activity(self, client):
@@ -161,3 +233,77 @@ class TestTerraWebhookEndpoint:
         response = client.post("/sync/webhook/terra", json=payload)
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+
+class TestBackfillTerraUserIdLookup:
+    """Verify that backfill_history uses terra_user_id from wearable_connections."""
+
+    def _run_backfill(self, mock_db, mock_http_client=None, settings_overrides=None):
+        """Call the raw backfill function bypassing Celery task binding."""
+        from app.tasks.sync_tasks import backfill_history
+
+        mock_task_self = MagicMock()
+        mock_task_self.request.id = "task-test"
+
+        patches = [
+            patch("app.services.supabase_client.SupabaseService", return_value=mock_db),
+            patch("app.config.settings"),
+        ]
+        if mock_http_client is not None:
+            patches.append(patch("httpx.Client", return_value=mock_http_client))
+
+        with patches[0], patches[1] as mock_settings:
+            mock_settings.terra_api_key = "test-key"
+            mock_settings.terra_dev_id = "test-dev"
+            if settings_overrides:
+                for k, v in settings_overrides.items():
+                    setattr(mock_settings, k, v)
+
+            if len(patches) > 2:
+                with patches[2]:
+                    return backfill_history.__wrapped__("pirx-user-1", "garmin")
+            return backfill_history.__wrapped__("pirx-user-1", "garmin")
+
+    def test_backfill_looks_up_terra_user_id(self):
+        mock_db = MagicMock()
+        mock_db.get_wearable_connections.return_value = [
+            {
+                "provider": "garmin",
+                "is_active": True,
+                "terra_user_id": "terra-garmin-abc",
+            }
+        ]
+        mock_db.register_task.return_value = None
+        mock_db.update_task_status.return_value = None
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": []}
+
+        mock_http = MagicMock()
+        mock_http.__enter__ = MagicMock(return_value=mock_http)
+        mock_http.__exit__ = MagicMock(return_value=False)
+        mock_http.get.return_value = mock_resp
+
+        result = self._run_backfill(mock_db, mock_http_client=mock_http)
+
+        call_args = mock_http.get.call_args
+        assert call_args is not None
+        params = call_args.kwargs.get("params", {})
+        assert params.get("user_id") == "terra-garmin-abc"
+
+    def test_backfill_fails_without_terra_user_id(self):
+        mock_db = MagicMock()
+        mock_db.get_wearable_connections.return_value = [
+            {
+                "provider": "garmin",
+                "is_active": True,
+                "terra_user_id": None,
+            }
+        ]
+        mock_db.register_task.return_value = None
+        mock_db.update_task_status.return_value = None
+
+        result = self._run_backfill(mock_db)
+        assert result["status"] == "error"
+        assert "terra_user_id" in result["error"]

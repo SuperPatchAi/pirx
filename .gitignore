@@ -2,6 +2,8 @@
 node_modules/
 pirx-frontend/node_modules/
 pirx-backend/venv/
+pirx-backend/.venv/
+.venv/
 
 # Next.js build
 pirx-frontend/.next/

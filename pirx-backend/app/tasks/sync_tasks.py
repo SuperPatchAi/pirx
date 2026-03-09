@@ -251,19 +251,29 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
             else:
                 import httpx
                 from app.services.terra_service import TerraService
-                from app.models.activities import NormalizedActivity
+
+                connections = db.get_wearable_connections(user_id)
+                terra_conn = next(
+                    (c for c in connections if c.get("provider") == provider and c.get("is_active")),
+                    None,
+                )
+                terra_user_id = terra_conn.get("terra_user_id") if terra_conn else None
+                if not terra_user_id:
+                    logger.warning("No terra_user_id found for user %s provider %s", user_id, provider)
+                    return {"status": "error", "user_id": user_id, "error": f"No terra_user_id for {provider}"}
+
                 end_date = datetime.now(timezone.utc)
                 start_date = end_date - timedelta(days=90)
                 try:
                     with httpx.Client() as http:
                         resp = http.get(
-                            f"https://api.tryterra.co/v2/activity",
+                            "https://api.tryterra.co/v2/activity",
                             headers={
                                 "x-api-key": _settings.terra_api_key,
                                 "dev-id": _settings.terra_dev_id,
                             },
                             params={
-                                "user_id": user_id,
+                                "user_id": terra_user_id,
                                 "start_date": start_date.strftime("%Y-%m-%d"),
                                 "end_date": end_date.strftime("%Y-%m-%d"),
                             },
@@ -271,6 +281,7 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                         if resp.status_code == 200:
                             activities_data = resp.json().get("data", [])
                             for raw_act in activities_data:
+                                imported += 1
                                 try:
                                     activity = TerraService.normalize_activity(raw_act)
                                     cleaned = CleaningService.clean_activity(activity)

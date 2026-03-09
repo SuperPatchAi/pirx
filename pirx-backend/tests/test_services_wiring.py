@@ -431,6 +431,9 @@ class TestCeleryTasks:
         mock_sb.return_value = mock_client
         mock_client.table.return_value.insert.return_value.execute.return_value.data = [{}]
         mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{}]
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"provider": "terra", "is_active": True, "terra_user_id": "terra-user-xyz"}
+        ]
 
         from app.tasks.sync_tasks import backfill_history
 

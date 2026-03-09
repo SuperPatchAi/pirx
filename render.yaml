@@ -1,0 +1,96 @@
+services:
+  - type: web
+    name: pirx-backend
+    runtime: docker
+    dockerfilePath: ./pirx-backend/Dockerfile
+    dockerContext: ./pirx-backend
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: '["https://pirx-frontend.onrender.com","http://localhost:3001"]'
+      - key: TERRA_API_KEY
+        sync: false
+      - key: TERRA_DEV_ID
+        sync: false
+      - key: TERRA_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: worker
+    name: pirx-celery-worker
+    runtime: docker
+    dockerfilePath: ./pirx-backend/Dockerfile
+    dockerContext: ./pirx-backend
+    plan: starter
+    dockerCommand: celery -A app.tasks worker --loglevel=info --concurrency=2
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: pirx-redis
+          type: redis
+          property: connectionString
+      - key: TERRA_API_KEY
+        sync: false
+      - key: TERRA_DEV_ID
+        sync: false
+      - key: TERRA_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: redis
+    name: pirx-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []

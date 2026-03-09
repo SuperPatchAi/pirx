@@ -228,16 +228,19 @@ async def terra_webhook(request: Request):
 
         if normalized and payload.user and payload.user.reference_id:
             user_id = payload.user.reference_id
+            provider_source = (payload.user.provider or "terra").lower()
             db = SupabaseService()
             stored = 0
             skipped = 0
-            for raw_act, activity in zip(payload.data, normalized):
+            for idx, (raw_act, activity) in enumerate(zip(payload.data, normalized)):
                 try:
+                    raw_id = raw_act.get("id") or raw_act.get("metadata", {}).get("id", "")
+                    ext_id = str(raw_id) if raw_id else f"{payload.user.user_id}_{activity.timestamp.isoformat() if activity.timestamp else idx}"
                     if activity.duration_seconds and activity.duration_seconds >= 60:
                         stored += 1
                         db.insert_activity(user_id, {
-                            "source": activity.source or "terra",
-                            "external_id": str(raw_act.get("id", "")),
+                            "source": provider_source,
+                            "external_id": ext_id,
                             "timestamp": activity.timestamp.isoformat() if activity.timestamp else datetime.now(timezone.utc).isoformat(),
                             "started_at": activity.timestamp.isoformat() if activity.timestamp else datetime.now(timezone.utc).isoformat(),
                             "duration_seconds": activity.duration_seconds,

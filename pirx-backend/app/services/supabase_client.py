@@ -48,7 +48,11 @@ class SupabaseService:
 
     def insert_activity(self, user_id: str, activity_data: dict) -> dict:
         data = {"user_id": user_id, **activity_data}
-        result = self.client.table("activities").insert(data).execute()
+        result = (
+            self.client.table("activities")
+            .upsert(data, on_conflict="user_id,external_id,source")
+            .execute()
+        )
         return result.data[0] if result.data else data
 
     def get_activities(

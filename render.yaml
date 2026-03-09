@@ -1,12 +1,15 @@
 services:
   - type: web
     name: pirx-backend
-    runtime: docker
+    runtime: python
     rootDir: pirx-backend
-    dockerfilePath: ./Dockerfile
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     plan: starter
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
@@ -47,12 +50,14 @@ services:
 
   - type: worker
     name: pirx-celery-worker
-    runtime: docker
+    runtime: python
     rootDir: pirx-backend
-    dockerfilePath: ./Dockerfile
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.tasks worker --loglevel=info --concurrency=2
     plan: starter
-    dockerCommand: celery -A app.tasks worker --loglevel=info --concurrency=2
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

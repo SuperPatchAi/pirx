@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 broker = settings.celery_broker_url or settings.redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 backend = settings.celery_result_backend or settings.redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
+if broker.startswith("rediss://"):
+    broker = broker + "?ssl_cert_reqs=CERT_NONE" if "?" not in broker else broker + "&ssl_cert_reqs=CERT_NONE"
+if backend.startswith("rediss://"):
+    backend = backend + "?ssl_cert_reqs=CERT_NONE" if "?" not in backend else backend + "&ssl_cert_reqs=CERT_NONE"
+
 logger.info("Celery broker_url: %s", broker[:20] + "..." if len(broker) > 20 else broker)
 
 celery_app = Celery("pirx")
@@ -18,6 +23,8 @@ celery_app.config_from_object(
     {
         "broker_url": broker,
         "result_backend": backend,
+        "broker_use_ssl": {"ssl_cert_reqs": None} if broker.startswith("rediss://") else None,
+        "redis_backend_use_ssl": {"ssl_cert_reqs": None} if backend.startswith("rediss://") else None,
         "task_serializer": "json",
         "result_serializer": "json",
         "accept_content": ["json"],

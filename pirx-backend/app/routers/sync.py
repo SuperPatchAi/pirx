@@ -289,8 +289,8 @@ async def connect_wearable_generic(
     try:
         result = await terra_service.generate_widget_session(
             user_id=user["user_id"],
-            redirect_url=f"{settings.api_url or 'http://localhost:3000'}/settings?connected={provider}",
-            failure_redirect_url=f"{settings.api_url or 'http://localhost:3000'}/settings?error={provider}",
+            redirect_url=f"{settings.frontend_url}/settings?connected={provider}",
+            failure_redirect_url=f"{settings.frontend_url}/settings?error={provider}",
         )
         return {"provider": provider, "widget_url": result.get("url"), "status": "widget_session_created"}
     except Exception as e:

@@ -36,7 +36,9 @@ services:
           type: redis
           property: connectionString
       - key: CORS_ORIGINS
-        value: '["https://pirx-frontend.onrender.com","http://localhost:3001"]'
+        value: '["https://pirx-theta.vercel.app","http://localhost:3001"]'
+      - key: FRONTEND_URL
+        value: https://pirx-theta.vercel.app
       - key: TERRA_API_KEY
         sync: false
       - key: TERRA_DEV_ID

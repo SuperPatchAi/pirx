@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     api_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3001"
 
     sentry_dsn: str = ""
     token_encryption_key: str = ""

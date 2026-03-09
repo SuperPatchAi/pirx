@@ -186,6 +186,13 @@ async def terra_webhook(request: Request):
         )
 
     payload = TerraWebhookPayload(**(await request.json()))
+    logger.info(
+        "Terra webhook received: type=%s status=%s user=%s data_count=%d",
+        payload.type,
+        payload.status,
+        payload.user.user_id if payload.user else "none",
+        len(payload.data) if payload.data else 0,
+    )
 
     if payload.type == "auth" and payload.status == "success" and payload.user:
         logger.info(
@@ -222,10 +229,13 @@ async def terra_webhook(request: Request):
         if normalized and payload.user and payload.user.reference_id:
             user_id = payload.user.reference_id
             db = SupabaseService()
+            stored = 0
+            skipped = 0
             for raw_act, activity in zip(payload.data, normalized):
                 try:
                     cleaned = CleaningService.clean_activity(activity)
                     if cleaned and cleaned.duration_seconds and cleaned.duration_seconds >= 60:
+                        stored += 1
                         db.insert_activity(user_id, {
                             "source": cleaned.source or "terra",
                             "external_id": str(raw_act.get("id", "")),
@@ -241,8 +251,20 @@ async def terra_webhook(request: Request):
                             "activity_type": cleaned.activity_type,
                             "hr_zones": cleaned.hr_zones,
                         })
+                    else:
+                        skipped += 1
+                        logger.debug(
+                            "Skipped activity: cleaned=%s dur=%s",
+                            cleaned is not None,
+                            cleaned.duration_seconds if cleaned else None,
+                        )
                 except Exception:
                     logger.exception("Failed to insert Terra activity for user %s", user_id)
+
+            logger.info(
+                "Terra activity webhook processed: user=%s stored=%d skipped=%d normalized=%d",
+                user_id, stored, skipped, len(normalized),
+            )
 
             try:
                 from app.tasks.feature_engineering import compute_features

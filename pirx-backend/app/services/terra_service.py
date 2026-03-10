@@ -176,10 +176,13 @@ def classify_terra_type(type_code: int, name: str = "") -> str:
 
     Terra type codes: 0=unknown, 1=running, 2=cycling, 4=swimming,
     8=walking, 9=hiking, 12=trail_running, 83=virtual_run, etc.
+    Garmin via Terra often sends type=0 with running info in the name.
     """
-    running_types = {1, 12, 83}
+    running_type_codes = {1, 12, 83}
+    non_running_type_codes = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
     race_keywords = ["race", "competition", "parkrun"]
     interval_keywords = ["interval", "tempo", "threshold", "speed", "fartlek", "track"]
+    running_keywords = ["run", "running", "jog", "jogging"]
 
     name_lower = name.lower()
 
@@ -187,9 +190,13 @@ def classify_terra_type(type_code: int, name: str = "") -> str:
         return "race"
     if any(kw in name_lower for kw in interval_keywords):
         return "interval"
-    if type_code in running_types:
+    if type_code in running_type_codes:
         return "easy"
-    return "cross-training"
+    if any(kw in name_lower for kw in running_keywords):
+        return "easy"
+    if type_code in non_running_type_codes:
+        return "cross-training"
+    return "easy"
 
 
 def extract_hr_zones(terra_activity: dict) -> Optional[list[float]]:

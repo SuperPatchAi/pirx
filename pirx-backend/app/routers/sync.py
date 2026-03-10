@@ -378,11 +378,23 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
 
         activities = [NormalizedActivity.from_db_dict(a) for a in raw]
 
+        reclassified = 0
+        for a in activities:
+            if a.activity_type not in ("easy", "threshold", "interval", "race"):
+                if a.distance_meters and a.distance_meters > 1000 and a.duration_seconds and a.duration_seconds > 0:
+                    pace = a.duration_seconds / (a.distance_meters / 1000)
+                    if 223 <= pace <= 900:
+                        a.activity_type = "easy"
+                        reclassified += 1
+
         type_counts: dict[str, int] = {}
         for a in activities:
             t = a.activity_type or "None"
             type_counts[t] = type_counts.get(t, 0) + 1
-        logger.warning("recompute_pipeline: activity_type distribution: %s", type_counts)
+        logger.warning(
+            "recompute_pipeline: activity_type distribution: %s (reclassified %d)",
+            type_counts, reclassified,
+        )
 
         for a in activities:
             if a.timestamp and a.timestamp.tzinfo:

@@ -37,8 +37,11 @@ class TestClassifyTerraType:
     def test_fartlek_keyword(self):
         assert classify_terra_type(1, "Fartlek session") == "interval"
 
-    def test_unknown_type_cross_training(self):
-        assert classify_terra_type(0) == "cross-training"
+    def test_unknown_type_defaults_to_easy(self):
+        assert classify_terra_type(0) == "easy"
+
+    def test_cycling_type_cross_training(self):
+        assert classify_terra_type(2) == "cross-training"
 
 
 SAMPLE_TERRA_ACTIVITY = {

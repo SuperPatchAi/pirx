@@ -378,13 +378,19 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
 
         activities = [NormalizedActivity.from_db_dict(a) for a in raw]
 
+        type_counts: dict[str, int] = {}
+        for a in activities:
+            t = a.activity_type or "None"
+            type_counts[t] = type_counts.get(t, 0) + 1
+        logger.warning("recompute_pipeline: activity_type distribution: %s", type_counts)
+
         for a in activities:
             if a.timestamp and a.timestamp.tzinfo:
                 a.timestamp = a.timestamp.replace(tzinfo=None)
 
         avg_pace = CleaningService.compute_runner_avg_pace(activities)
         cleaned = CleaningService.clean_batch(activities, avg_pace)
-        logger.warning("recompute_pipeline: cleaned %d activities (from %d raw)", len(cleaned), len(raw))
+        logger.warning("recompute_pipeline: cleaned %d activities (from %d raw, avg_pace=%s)", len(cleaned), len(raw), avg_pace)
 
         if not cleaned:
             return {"status": "no_valid_activities", "user_id": user_id, "raw_count": len(raw)}

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from app.tasks.feature_engineering import compute_features, STRUCTURAL_SHIFT_THRESHOLD_SECONDS
+from app.tasks.feature_engineering import compute_features
 from app.tasks.sync_tasks import process_activity
 from app.tasks.projection_tasks import (
     recompute_projection,
@@ -21,9 +21,9 @@ class TestComputeFeaturesTask:
         assert result["status"] == "no_activities"
         assert result["user_id"] == "user-123"
 
-    @patch("app.tasks.projection_tasks.recompute_projection")
-    def test_with_activity_data(self, mock_recompute):
-        mock_recompute.delay = MagicMock()
+    @patch("app.tasks.projection_tasks.recompute_all_events")
+    def test_with_activity_data(self, mock_recompute_all):
+        mock_recompute_all.delay = MagicMock()
         activity_data = {
             "source": "strava",
             "timestamp": "2026-03-01T08:00:00",
@@ -37,7 +37,7 @@ class TestComputeFeaturesTask:
         assert result["activities_cleaned"] >= 1
         assert result["features_computed"] > 0
         assert result["projection_recompute_triggered"] is True
-        mock_recompute.delay.assert_called_once_with("user-123")
+        mock_recompute_all.delay.assert_called_once_with("user-123")
 
     def test_cross_training_filtered_out(self):
         activity_data = {
@@ -50,8 +50,13 @@ class TestComputeFeaturesTask:
         result = compute_features("user-123", activity_data=activity_data)
         assert result["status"] == "all_filtered"
 
-    def test_structural_shift_threshold_constant(self):
-        assert STRUCTURAL_SHIFT_THRESHOLD_SECONDS == 2.0
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_recompute_all_events_covers_six_events(self, mock_sb):
+        mock_sb.return_value = MagicMock()
+        result = recompute_all_events("user-test")
+        assert len(result["events"]) == 6
+        for ev in ("1500", "3000", "5000", "10000", "21097", "42195"):
+            assert ev in result["events"]
 
 
 class TestProcessActivityTask:
@@ -366,6 +371,46 @@ class TestBiasCorrectionDetailed:
         assert metric_data["actual_seconds"] == 1250
         assert metric_data["projected_seconds"] == 1200
         assert metric_data["bias_seconds"] == 50
+
+    @patch("app.services.supabase_client.SupabaseService")
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_bias_correction_half_marathon(self, mock_sb, mock_svc_cls):
+        """Half-marathon race distances should map to event 21097."""
+        mock_sb.return_value = MagicMock()
+        mock_svc = MagicMock()
+        mock_svc.get_onboarded_users.return_value = [{"user_id": "hm-racer"}]
+        mock_svc.get_race_activities.return_value = [
+            {"distance_meters": 21100, "duration_seconds": 5400, "timestamp": "2026-02-20T09:00:00Z"},
+        ]
+        mock_svc.get_latest_projection.return_value = {"midpoint_seconds": 5200}
+        mock_svc.insert_model_metric.return_value = {}
+        mock_svc_cls.return_value = mock_svc
+
+        result = bias_correction()
+        assert result["users_corrected"] == 1
+        assert result["biases_logged"] == 1
+        metric_data = mock_svc.insert_model_metric.call_args[0][0]
+        assert metric_data["event"] == "21097"
+
+    @patch("app.services.supabase_client.SupabaseService")
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_bias_correction_marathon(self, mock_sb, mock_svc_cls):
+        """Marathon race distances should map to event 42195."""
+        mock_sb.return_value = MagicMock()
+        mock_svc = MagicMock()
+        mock_svc.get_onboarded_users.return_value = [{"user_id": "marathon-racer"}]
+        mock_svc.get_race_activities.return_value = [
+            {"distance_meters": 42200, "duration_seconds": 12600, "timestamp": "2026-02-20T09:00:00Z"},
+        ]
+        mock_svc.get_latest_projection.return_value = {"midpoint_seconds": 12000}
+        mock_svc.insert_model_metric.return_value = {}
+        mock_svc_cls.return_value = mock_svc
+
+        result = bias_correction()
+        assert result["users_corrected"] == 1
+        assert result["biases_logged"] == 1
+        metric_data = mock_svc.insert_model_metric.call_args[0][0]
+        assert metric_data["event"] == "42195"
 
     @patch("app.services.supabase_client.SupabaseService")
     @patch("app.services.supabase_client.get_supabase_client")

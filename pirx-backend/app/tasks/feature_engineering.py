@@ -2,22 +2,17 @@ import os
 
 from app.tasks import celery_app
 
-STRUCTURAL_SHIFT_THRESHOLD_SECONDS = 2.0
-
 
 @celery_app.task(name="app.tasks.feature_engineering.compute_features")
 def compute_features(user_id: str, activity_data: dict = None) -> dict:
     """Compute rolling-window features after new activity sync.
 
     Pipeline:
-    1. Load recent activities for user (TODO: from Supabase)
+    1. Load recent activities for user from Supabase
     2. Clean activities through CleaningService
     3. Compute 25 features via FeatureService
-    4. Cache features in Redis (TODO)
-    5. Check structural shift threshold
-    6. If shift >= 2 seconds, queue recompute_projection
-
-    For now, this operates on passed-in data since DB isn't connected yet.
+    4. Cache features in Redis
+    5. Queue recompute_all_events for all distance projections
     """
     from app.services.cleaning_service import CleaningService
     from app.services.feature_service import FeatureService
@@ -46,6 +41,10 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
         result["status"] = "no_activities"
         return result
 
+    for a in activities:
+        if a.timestamp and a.timestamp.tzinfo:
+            a.timestamp = a.timestamp.replace(tzinfo=None)
+
     runner_avg_pace = CleaningService.compute_runner_avg_pace(activities)
 
     cleaned = CleaningService.clean_batch(activities, runner_avg_pace)
@@ -55,7 +54,7 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
         result["status"] = "all_filtered"
         return result
 
-    features = FeatureService.compute_all_features(cleaned)
+    features = FeatureService.compute_all_features(cleaned, user_id=user_id)
     result["features_computed"] = sum(1 for v in features.values() if v is not None)
 
     try:
@@ -66,8 +65,8 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     except Exception:
         pass
 
-    from app.tasks.projection_tasks import recompute_projection
-    recompute_projection.delay(user_id)
+    from app.tasks.projection_tasks import recompute_all_events
+    recompute_all_events.delay(user_id)
     result["projection_recompute_triggered"] = True
 
     return result

@@ -23,47 +23,19 @@ def recompute_projection(user_id: str, event: str = "5000") -> dict:
         from app.models.activities import NormalizedActivity
 
         activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
+
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
+
         avg_pace = CleaningService.compute_runner_avg_pace(activities)
         cleaned = CleaningService.clean_batch(activities, avg_pace)
 
         if not cleaned:
             return {"status": "no_valid_activities", "user_id": user_id}
 
-        features = FeatureService.compute_all_features(cleaned)
+        features = FeatureService.compute_all_features(cleaned, user_id=user_id)
         state = svc.recompute(user_id, event, features)
-
-        if state and state.projected_time_seconds:
-            try:
-                from app.services.embedding_service import EmbeddingService
-                old_proj = db.get_latest_projection(user_id, event)
-                old_time = old_proj.get("midpoint_seconds", state.projected_time_seconds) if old_proj else state.projected_time_seconds
-                if abs(old_time - state.projected_time_seconds) > 2.0:
-                    EmbeddingService().embed_projection_change(
-                        user_id=user_id, event=event,
-                        old_time_s=old_time, new_time_s=state.projected_time_seconds,
-                        improvement_s=state.projected_time_seconds,
-                    )
-            except Exception:
-                logger.debug("Embedding failed for projection change")
-
-            try:
-                from app.ml.readiness_engine import ReadinessEngine
-                from app.services.notification_service import NotificationService
-                readiness_result = ReadinessEngine.compute_readiness(
-                    features=features,
-                    days_since_last_activity=0,
-                )
-                new_score = readiness_result.score
-                old_score = 0.0
-                if old_proj:
-                    old_score = old_proj.get("readiness_score", 0.0) or 0.0
-                if old_score > 0 and abs(new_score - old_score) >= 5.0:
-                    ns = NotificationService()
-                    payload = ns.check_readiness_shift(user_id, old_score, new_score)
-                    if payload:
-                        ns.dispatch(user_id, payload)
-            except Exception:
-                logger.debug("Readiness notification check failed")
 
         return {
             "status": "updated",
@@ -310,6 +282,8 @@ def bias_correction() -> dict:
         (2900, 3100): "3000",
         (4900, 5100): "5000",
         (9800, 10200): "10000",
+        (20900, 21300): "21097",
+        (41900, 42500): "42195",
     }
 
     try:

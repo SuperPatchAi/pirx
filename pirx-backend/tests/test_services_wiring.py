@@ -155,7 +155,7 @@ class TestDriverService:
         svc = DriverService()
         mock_insert = MagicMock(return_value={})
         svc.db.insert_driver_state = mock_insert
-        svc.db.insert_projection = MagicMock(return_value={})
+        svc.db.insert_projection = MagicMock(return_value={"projection_id": "proj-test-123"})
 
         svc.compute_and_store_drivers(
             user_id="u1",

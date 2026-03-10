@@ -67,8 +67,9 @@ class DriverService:
         except Exception:
             pass
 
+        projection_id = None
         try:
-            self.db.insert_projection({
+            proj_result = self.db.insert_projection({
                 "user_id": user_id,
                 "event": event,
                 "midpoint_seconds": projection_state.projected_time_seconds,
@@ -83,10 +84,18 @@ class DriverService:
                 "confidence_score": max(0.0, 1.0 - projection_state.volatility / (projection_state.projected_time_seconds or 1)),
                 "twenty_one_day_change": twenty_one_day_change,
             })
+            projection_id = proj_result.get("projection_id")
         except Exception:
             logger.exception("Failed to insert projection state for user %s", user_id)
 
-        driver_row = {"user_id": user_id, "event": event}
+        if not projection_id:
+            logger.warning(
+                "Skipping driver_state insert for user %s event %s — no projection_id",
+                user_id, event,
+            )
+            return projection_state, driver_states
+
+        driver_row = {"user_id": user_id, "event": event, "projection_id": projection_id}
         for ds in driver_states:
             driver_row[f"{ds.driver_name}_seconds"] = ds.contribution_seconds
             driver_row[f"{ds.driver_name}_score"] = ds.score

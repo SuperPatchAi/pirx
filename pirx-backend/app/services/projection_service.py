@@ -82,8 +82,8 @@ class ProjectionService:
         return new_state
 
     def recompute_all_events(self, user_id: str, features: dict) -> dict:
-        """Recompute projections for all 4 events."""
-        events = ["1500", "3000", "5000", "10000"]
+        """Recompute projections for all 6 events."""
+        events = ["1500", "3000", "5000", "10000", "21097", "42195"]
         results = {}
         for event in events:
             try:

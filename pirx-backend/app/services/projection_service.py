@@ -1,5 +1,6 @@
 from app.ml.projection_engine import ProjectionEngine, ProjectionState
 from app.ml.event_scaling import EventScaler
+from app.ml.baseline_estimator import estimate_5k_baseline
 from app.services.supabase_client import SupabaseService
 from app.services.driver_service import DriverService
 from app.services.embedding_service import EmbeddingService
@@ -105,38 +106,17 @@ class ProjectionService:
         return new_state
 
     def _estimate_baseline(self, user_id: str) -> float:
-        """Estimate a 5K baseline from recent activity pace when onboarding hasn't been completed.
+        """Estimate a 5K race-pace baseline from recent activities.
 
-        Uses the runner's median pace over recent activities to project a 5K time.
-        Falls back to 25:00 (1500s) if no usable data exists.
+        Uses multi-signal tiered estimation (race detection, sustained effort,
+        P10 pace, adjusted median) instead of naive median training pace.
         """
-        DEFAULT_5K = 1500.0
         try:
             activities = self.db.get_recent_activities(user_id, days=90)
-            paces = []
-            for a in activities:
-                pace = a.get("avg_pace_sec_per_km")
-                if pace is not None:
-                    pace = float(pace)
-                dist = float(a.get("distance_meters") or 0)
-                dur = float(a.get("duration_seconds") or 0)
-                if pace is None and dist > 0 and dur > 0:
-                    pace = dur / (dist / 1000)
-                if pace and 223 <= pace <= 900 and dist > 1600:
-                    paces.append(pace)
-            if len(paces) < 3:
-                return DEFAULT_5K
-            paces.sort()
-            median_pace = paces[len(paces) // 2]
-            estimated = median_pace * 5.0
-            logger.info(
-                "Estimated 5K baseline for user %s: %.0fs (median pace %.0f s/km from %d activities)",
-                user_id, estimated, median_pace, len(paces),
-            )
-            return estimated
+            return estimate_5k_baseline(activities)
         except Exception:
             logger.warning("Failed to estimate baseline for user %s, using default", user_id)
-            return DEFAULT_5K
+            return 1500.0
 
     def recompute_all_events(self, user_id: str, features: dict) -> dict:
         """Recompute projections for all 6 events."""

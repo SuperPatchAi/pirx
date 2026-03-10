@@ -253,7 +253,11 @@ def classify_terra_activity(
     # --- Name-based overrides (highest priority for labelled workouts) ---
     name_lower = name.lower()
 
-    race_keywords = ["race", "competition", "parkrun", "5k race", "10k race"]
+    race_keywords = [
+        "race", "competition", "parkrun", "park run",
+        "5k race", "10k race", "half marathon", "marathon",
+        "garmin race", "time trial",
+    ]
     if any(kw in name_lower for kw in race_keywords):
         return "race"
 
@@ -276,7 +280,7 @@ def classify_terra_activity(
     # --- Race detection: standard distance + high intensity ---
     if distance_meters > 0 and hr_pct is not None:
         is_race_distance = any(lo <= distance_meters <= hi for lo, hi in _RACE_DISTANCES)
-        if is_race_distance and hr_pct >= 0.88:
+        if is_race_distance and hr_pct >= 0.83:
             return "race"
 
     # --- Intensity zones based on HR percentage of max ---

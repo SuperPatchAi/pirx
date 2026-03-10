@@ -456,17 +456,8 @@ def _run_projection_backfill(user_id: str) -> dict:
     user_data = db.get_user(user_id) or {}
     raw_baseline = user_data.get("baseline_time_seconds")
     if not raw_baseline:
-        paces = []
-        for a in activities:
-            p = a.avg_pace_sec_per_km
-            d = a.distance_meters or 0
-            if p and 223 <= p <= 900 and d > 1600:
-                paces.append(p)
-        if len(paces) >= 3:
-            paces.sort()
-            raw_baseline = paces[len(paces) // 2] * 5.0
-        else:
-            raw_baseline = 1500.0
+        from app.ml.baseline_estimator import estimate_5k_baseline
+        raw_baseline = estimate_5k_baseline(raw)
 
     engine = ProjectionEngine()
     snapshots_created = 0

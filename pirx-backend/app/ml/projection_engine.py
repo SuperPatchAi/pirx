@@ -182,20 +182,22 @@ class ProjectionEngine:
 
         return projection_state, driver_states
 
-    # Per-feature baselines for normalization (each feature scored independently)
+    # Per-feature baselines for normalization (each feature scored independently).
+    # Calibrated for a competitive recreational runner doing ~40-50 km/week.
+    # A score of 50 means the runner matches this baseline exactly.
     FEATURE_BASELINES = {
-        "rolling_distance_7d": 30000,
-        "rolling_distance_21d": 85000,
-        "rolling_distance_42d": 160000,
+        "rolling_distance_7d": 20000,
+        "rolling_distance_21d": 55000,
+        "rolling_distance_42d": 110000,
         "z1_pct": 0.40,
         "z2_pct": 0.30,
-        "z4_pct": 0.12,
-        "z5_pct": 0.05,
-        "threshold_density_min_week": 15,
-        "speed_exposure_min_week": 5,
+        "z4_pct": 0.10,
+        "z5_pct": 0.04,
+        "threshold_density_min_week": 10,
+        "speed_exposure_min_week": 3,
         "hr_drift_sustained": 0.05,
         "late_session_pace_decay": 0.04,
-        "matched_hr_band_pace": 280,
+        "matched_hr_band_pace": 300,
         "weekly_load_stddev": 5000,
         "block_variance": 4000,
         "session_density_stability": 1.0,
@@ -245,15 +247,14 @@ class ProjectionEngine:
         """Compute total improvement in seconds from driver scores.
 
         Each driver contributes proportionally to its weight and score.
-        Maximum possible improvement is capped at 15% of baseline.
+        Maximum possible improvement is capped at 25% of baseline.
         """
         weighted_sum = sum(
             scores[d] * self.driver_weights[d] for d in DRIVER_NAMES
         )
 
         # Scale: 50 = no improvement, 100 = max improvement
-        # Max improvement = 15% of baseline time
-        max_improvement = baseline_time_s * 0.15
+        max_improvement = baseline_time_s * 0.25
         improvement_factor = (weighted_sum - 50) / 50  # range: -1 to +1
 
         total = improvement_factor * max_improvement

@@ -72,6 +72,15 @@ def recompute_all_events(user_id: str) -> dict:
     results = {}
     for event in events:
         results[event] = recompute_projection(user_id, event)
+
+    try:
+        from app.routers.sync import projection_history_is_sparse, _run_projection_backfill
+        if projection_history_is_sparse(user_id):
+            backfill = _run_projection_backfill(user_id)
+            logger.info("Auto-backfill for user %s: %s snapshots created", user_id, backfill.get("snapshots_created", 0))
+    except Exception:
+        logger.warning("Auto-backfill check failed for user %s", user_id, exc_info=True)
+
     return {"user_id": user_id, "events": results}
 
 

@@ -406,6 +406,14 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
         projection_results = svc.recompute_all_events(user_id, features)
         logger.warning("recompute_pipeline: projections=%s", projection_results)
 
+        backfill_result = None
+        if projection_history_is_sparse(user_id):
+            try:
+                backfill_result = _run_projection_backfill(user_id)
+                logger.info("recompute auto-backfill for %s: %s snapshots", user_id, backfill_result.get("snapshots_created", 0))
+            except Exception:
+                logger.warning("recompute auto-backfill failed for %s", user_id, exc_info=True)
+
         return {
             "status": "completed",
             "user_id": user_id,
@@ -413,113 +421,127 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
             "activities_cleaned": len(cleaned),
             "features_computed": features_computed,
             "projections": projection_results,
+            "backfill": backfill_result,
         }
     except Exception as e:
         logger.exception("recompute_pipeline failed for user %s", user_id)
         return {"status": "error", "user_id": user_id, "error": str(e)}
 
 
-@router.post("/backfill-projections")
-async def backfill_projections(user: dict = Depends(get_current_user)):
-    """Backfill weekly projection snapshots from historical activities.
+def _run_projection_backfill(user_id: str) -> dict:
+    """Core logic: backfill weekly projection snapshots from historical activities.
 
-    Creates projection_state rows at weekly intervals so the projection
-    history chart shows a full time-series instead of a single point.
+    Reusable from both the REST endpoint and the Celery post-recompute hook.
+    Returns a dict with status, snapshots_created, total_activities.
     """
     from datetime import timedelta
     from app.services.feature_service import FeatureService
     from app.models.activities import NormalizedActivity
     from app.ml.projection_engine import ProjectionEngine
 
-    user_id = user["user_id"]
     db = SupabaseService()
 
-    try:
-        raw = db.get_recent_activities(user_id, days=180)
-        if not raw:
-            return {"status": "no_activities", "snapshots_created": 0}
+    raw = db.get_recent_activities(user_id, days=180)
+    if not raw:
+        return {"status": "no_activities", "snapshots_created": 0}
 
-        activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+    activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+    for a in activities:
+        if a.timestamp and a.timestamp.tzinfo:
+            a.timestamp = a.timestamp.replace(tzinfo=None)
+    activities.sort(key=lambda a: a.timestamp or datetime.min)
+
+    avg_pace = CleaningService.compute_runner_avg_pace(activities)
+
+    user_data = db.get_user(user_id) or {}
+    raw_baseline = user_data.get("baseline_time_seconds")
+    if not raw_baseline:
+        paces = []
         for a in activities:
-            if a.timestamp and a.timestamp.tzinfo:
-                a.timestamp = a.timestamp.replace(tzinfo=None)
-        activities.sort(key=lambda a: a.timestamp or datetime.min)
+            p = a.avg_pace_sec_per_km
+            d = a.distance_meters or 0
+            if p and 223 <= p <= 900 and d > 1600:
+                paces.append(p)
+        if len(paces) >= 3:
+            paces.sort()
+            raw_baseline = paces[len(paces) // 2] * 5.0
+        else:
+            raw_baseline = 1500.0
 
-        avg_pace = CleaningService.compute_runner_avg_pace(activities)
+    engine = ProjectionEngine()
+    snapshots_created = 0
 
-        user_data = db.get_user(user_id) or {}
-        raw_baseline = user_data.get("baseline_time_seconds")
-        if not raw_baseline:
-            paces = []
-            for a in activities:
-                p = a.avg_pace_sec_per_km
-                d = a.distance_meters or 0
-                if p and 223 <= p <= 900 and d > 1600:
-                    paces.append(p)
-            if len(paces) >= 3:
-                paces.sort()
-                raw_baseline = paces[len(paces) // 2] * 5.0
-            else:
-                raw_baseline = 1500.0
+    if not activities or not activities[0].timestamp:
+        return {"status": "no_timestamps", "snapshots_created": 0}
 
-        engine = ProjectionEngine()
-        snapshots_created = 0
+    start_date = activities[0].timestamp
+    now = datetime.now()
+    current_date = start_date + timedelta(days=14)
 
-        if not activities or not activities[0].timestamp:
-            return {"status": "no_timestamps", "snapshots_created": 0}
+    while current_date <= now:
+        window = [a for a in activities if a.timestamp and a.timestamp <= current_date]
 
-        start_date = activities[0].timestamp
-        now = datetime.now()
-        current_date = start_date + timedelta(days=14)
+        if len(window) >= 5:
+            cleaned = CleaningService.clean_batch(window, avg_pace)
+            if len(cleaned) >= 3:
+                try:
+                    features = FeatureService.compute_all_features(
+                        cleaned, reference_date=current_date, user_id=user_id
+                    )
+                    state, driver_states = engine.compute_projection(
+                        user_id=user_id,
+                        event="5000",
+                        baseline_time_s=float(raw_baseline),
+                        features=features,
+                    )
 
-        while current_date <= now:
-            window = [a for a in activities if a.timestamp and a.timestamp <= current_date]
+                    computed_at_iso = current_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
-            if len(window) >= 5:
-                cleaned = CleaningService.clean_batch(window, avg_pace)
-                if len(cleaned) >= 3:
-                    try:
-                        features = FeatureService.compute_all_features(
-                            cleaned, reference_date=current_date, user_id=user_id
-                        )
-                        state, driver_states = engine.compute_projection(
-                            user_id=user_id,
-                            event="5000",
-                            baseline_time_s=float(raw_baseline),
-                            features=features,
-                        )
+                    db.insert_projection({
+                        "user_id": user_id,
+                        "event": "5000",
+                        "midpoint_seconds": state.projected_time_seconds,
+                        "range_low_seconds": state.supported_range_low,
+                        "range_high_seconds": state.supported_range_high,
+                        "range_lower": state.supported_range_low,
+                        "range_upper": state.supported_range_high,
+                        "baseline_seconds": state.baseline_time_seconds,
+                        "improvement_since_baseline": state.total_improvement_seconds,
+                        "volatility": state.volatility,
+                        "volatility_score": state.volatility,
+                        "confidence_score": max(0.0, 1.0 - state.volatility / (state.projected_time_seconds or 1)),
+                        "twenty_one_day_change": 0,
+                        "computed_at": computed_at_iso,
+                    })
 
-                        computed_at_iso = current_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                    snapshots_created += 1
+                except Exception:
+                    logger.warning("backfill snapshot failed at %s", current_date, exc_info=True)
 
-                        db.insert_projection({
-                            "user_id": user_id,
-                            "event": "5000",
-                            "midpoint_seconds": state.projected_time_seconds,
-                            "range_low_seconds": state.supported_range_low,
-                            "range_high_seconds": state.supported_range_high,
-                            "range_lower": state.supported_range_low,
-                            "range_upper": state.supported_range_high,
-                            "baseline_seconds": state.baseline_time_seconds,
-                            "improvement_since_baseline": state.total_improvement_seconds,
-                            "volatility": state.volatility,
-                            "volatility_score": state.volatility,
-                            "confidence_score": max(0.0, 1.0 - state.volatility / (state.projected_time_seconds or 1)),
-                            "twenty_one_day_change": 0,
-                            "computed_at": computed_at_iso,
-                        })
+        current_date += timedelta(days=7)
 
-                        snapshots_created += 1
-                    except Exception:
-                        logger.warning("backfill snapshot failed at %s", current_date, exc_info=True)
+    return {
+        "status": "completed",
+        "user_id": user_id,
+        "snapshots_created": snapshots_created,
+        "total_activities": len(activities),
+    }
 
-            current_date += timedelta(days=7)
 
-        return {
-            "status": "completed",
-            "user_id": user_id,
-            "snapshots_created": snapshots_created,
-            "total_activities": len(activities),
-        }
+def projection_history_is_sparse(user_id: str, threshold: int = 4) -> bool:
+    """Return True if fewer than `threshold` projection snapshots exist for 5K."""
+    db = SupabaseService()
+    history = db.get_projection_history(user_id, "5000", days=180)
+    return len(history) < threshold
+
+
+@router.post("/backfill-projections")
+async def backfill_projections(user: dict = Depends(get_current_user)):
+    """Backfill weekly projection snapshots from historical activities."""
+    user_id = user["user_id"]
+    try:
+        result = _run_projection_backfill(user_id)
+        return result
     except Exception as e:
         logger.exception("backfill_projections failed")
         return {"status": "error", "error": str(e)}

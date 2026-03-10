@@ -22,38 +22,47 @@ def _compute_methodology(distribution: dict) -> str:
 
 
 def _load_features_history(user_id: str) -> list[dict]:
-    """Load real feature snapshots from projection_state and driver_state history.
-
-    Falls back to mock data if insufficient real snapshots exist.
-    """
-    MOCK_FALLBACK: list[dict] = []
+    """Compute feature snapshots at weekly intervals from real activity data."""
+    from datetime import datetime, timedelta, timezone
+    from app.models.activities import NormalizedActivity
+    from app.services.cleaning_service import CleaningService
+    from app.services.feature_service import FeatureService
 
     try:
         db = SupabaseService()
-        proj_rows = db.get_feature_history(user_id, limit=6)
-        driver_rows = db.get_driver_history(user_id, days=42)
+        raw = db.get_recent_activities(user_id, days=90)
+        if not raw or len(raw) < 5:
+            return []
 
-        if len(proj_rows) < 3:
-            return MOCK_FALLBACK
+        activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
+        activities.sort(key=lambda a: a.timestamp or datetime.min)
 
-        feature_keys = [
-            "weekly_load_stddev", "rolling_distance_21d",
-            "z4_pct", "z5_pct", "acwr_4w",
-        ]
+        avg_pace = CleaningService.compute_runner_avg_pace(activities)
+        now = datetime.now()
         snapshots = []
-        for i, p_row in enumerate(proj_rows):
-            snapshot = {}
-            for k in feature_keys:
-                snapshot[k] = p_row.get(k)
-            if i < len(driver_rows):
-                d_row = driver_rows[i]
-                for dk in ["aerobic_base_score", "threshold_density_score", "speed_exposure_score"]:
-                    snapshot[dk] = d_row.get(dk)
-            snapshots.append(snapshot)
 
-        return snapshots if snapshots else MOCK_FALLBACK
+        for weeks_back in range(6, -1, -1):
+            cutoff = now - timedelta(weeks=weeks_back)
+            window = [a for a in activities if a.timestamp and a.timestamp <= cutoff]
+            if len(window) < 3:
+                continue
+            cleaned = CleaningService.clean_batch(window, avg_pace)
+            if len(cleaned) < 3:
+                continue
+            try:
+                features = FeatureService.compute_all_features(
+                    cleaned, reference_date=cutoff, user_id=user_id
+                )
+                snapshots.append(features)
+            except Exception:
+                continue
+
+        return snapshots
     except Exception:
-        return MOCK_FALLBACK
+        return []
 
 
 @router.get("/zones")
@@ -80,7 +89,49 @@ async def get_zone_distribution(user: dict = Depends(get_current_user)):
                 total_zone_time += hr_zones[i]
 
     if total_zone_time == 0:
-        return None
+        easy_count = 0
+        moderate_count = 0
+        hard_count = 0
+        total_dur = 0.0
+        for a in activities:
+            avg_hr = a.get("avg_hr")
+            max_hr = a.get("max_hr")
+            dur = float(a.get("duration_seconds") or 0)
+            if not avg_hr or dur <= 0:
+                continue
+            total_dur += dur
+            est_max = max_hr if max_hr and max_hr > 150 else 190
+            pct = avg_hr / est_max
+            if pct < 0.70:
+                easy_count += dur
+            elif pct < 0.85:
+                moderate_count += dur
+            else:
+                hard_count += dur
+
+        if total_dur == 0:
+            return None
+
+        z1_pct = round(easy_count * 0.4 / total_dur, 3)
+        z2_pct = round(easy_count * 0.6 / total_dur, 3)
+        z3_pct = round(moderate_count * 0.5 / total_dur, 3)
+        z4_pct = round(moderate_count * 0.5 / total_dur, 3)
+        z5_pct = round(hard_count / total_dur, 3)
+        distribution_21d = {"z1": z1_pct, "z2": z2_pct, "z3": z3_pct, "z4": z4_pct, "z5": z5_pct}
+        zones = [
+            {**meta, "time_pct": round(distribution_21d[f"z{i+1}"] * 100, 1)}
+            for i, meta in enumerate(ZONE_META)
+        ]
+        distribution_array = [
+            {"zone": f"Z{i+1}", "pct": round(distribution_21d[f"z{i+1}"] * 100, 1)}
+            for i in range(5)
+        ]
+        return {
+            "zones": zones,
+            "distribution": distribution_array,
+            "z2_efficiency_gain": round(z2_pct * 100, 1),
+            "methodology": _compute_methodology(distribution_21d),
+        }
 
     distribution_21d = {
         f"z{i+1}": round(zone_times[i] / total_zone_time, 3)

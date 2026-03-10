@@ -39,10 +39,6 @@ import {
 import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 import { apiFetch } from "@/lib/api";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
   Cell,
@@ -247,7 +243,7 @@ interface Driver {
 }
 
 interface DriverExplanation {
-  top_factors: { name: string; impact: number }[];
+  top_factors: { name: string; display_name?: string; contribution: number; direction?: string }[];
   narrative: string;
 }
 
@@ -281,63 +277,61 @@ function DriversTab({
   if (loading) return <TabSpinner />;
   if (!drivers || drivers.length === 0) return <NoData message="Driver data not yet available" />;
 
-  const chartData = drivers.map((d, i) => ({
-    name: d.display_name ?? driverLabel(d.name),
-    value: Math.abs(Number(d.contribution_seconds) || 0),
-    fill: DRIVER_COLORS[i % DRIVER_COLORS.length],
-    score: d.score,
-    raw: d.contribution_seconds,
-    key: d.name,
-  }));
+  const netGained = drivers.reduce((sum, d) => sum + (Number(d.contribution_seconds) || 0), 0);
+  const maxAbs = Math.max(...drivers.map((d) => Math.abs(Number(d.contribution_seconds) || 0)), 1);
+
+  function trendLabel(score: number): string {
+    if (score >= 70) return "Confirmed";
+    if (score >= 40) return "Emerging";
+    return "Observational";
+  }
 
   return (
     <div className="space-y-4">
       <Card className="border-border/40">
         <CardHeader>
-          <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-green-500" /> Driver Contributions
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+                Driver Seconds
+              </CardTitle>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Where time is gained and lost</p>
+            </div>
+            <div className="bg-secondary/60 rounded-lg px-3 py-1.5 text-right">
+              <p className={`text-lg font-bold tabular-nums ${netGained <= 0 ? "text-green-400" : "text-red-400"}`}>
+                {netGained <= 0 ? "" : "+"}{netGained.toFixed(0)}s
+              </p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Net Gained</p>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={drivers.length * 52 + 24}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 40, left: 10, bottom: 0 }}>
-              <XAxis
-                type="number"
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                tickFormatter={(v: number) => `${v.toFixed(1)}s`}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fontSize: 12, fill: "hsl(var(--foreground))", fontWeight: 500 }}
-                width={130}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                  fontSize: "13px",
-                  padding: "8px 12px",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                }}
-                formatter={(value: number | undefined, _name: string | undefined, props: { payload?: { key?: string; score?: number } }) => {
-                  const score = props?.payload?.score ?? 0;
-                  return [value != null ? `${value.toFixed(1)}s (score: ${score})` : "", "Contribution"];
-                }}
-                labelFormatter={(label) => String(label)}
-              />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
-                {chartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <CardContent className="space-y-4">
+          {drivers.map((driver, i) => {
+            const secs = Number(driver.contribution_seconds) || 0;
+            const pct = Math.min((Math.abs(secs) / maxAbs) * 100, 100);
+            const color = DRIVER_COLORS[i % DRIVER_COLORS.length];
+            const label = driver.display_name ?? driverLabel(driver.name);
+            const trend = trendLabel(driver.score);
+            return (
+              <div key={driver.name}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-foreground/90">{label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">{trend}</span>
+                    <span className={`text-sm font-semibold tabular-nums ${secs <= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {formatDelta(secs)}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-secondary/50 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${pct}%`, backgroundColor: color }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -379,12 +373,18 @@ function DriversTab({
                     {explanations[driver.name].top_factors.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs font-medium">Top Factors</p>
-                        {explanations[driver.name].top_factors.map((f) => (
-                          <div key={f.name} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">{f.name}</span>
-                            <span className="tabular-nums font-medium">{formatDelta(f.impact)}</span>
-                          </div>
-                        ))}
+                        {explanations[driver.name].top_factors.map((f) => {
+                          const val = Number(f.contribution);
+                          if (!isFinite(val)) return null;
+                          return (
+                            <div key={f.name} className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">{f.display_name ?? f.name}</span>
+                              <span className={`tabular-nums font-medium ${f.direction === "improved" ? "text-green-400" : f.direction === "declined" ? "text-red-400" : ""}`}>
+                                {formatDelta(val)}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1251,6 +1251,7 @@ export default function PerformancePage() {
           setDriversLoading(true);
           apiFetch("/drivers")
             .then((d) => {
+              if (!d) return;
               const raw = Array.isArray(d) ? d : d.drivers ?? [];
               const mapped: Driver[] = raw.map((item: Record<string, unknown>) => ({
                 name: (item.driver_name ?? item.name ?? "") as string,
@@ -1260,27 +1261,28 @@ export default function PerformancePage() {
               }));
               setDriversData(mapped);
             })
-            .catch(() => {})
+            .catch((e) => console.warn("Failed to load drivers:", e))
             .finally(() => setDriversLoading(false));
         },
         zones: () => {
           setZonesLoading(true);
           apiFetch("/features/zones")
-            .then(setZonesData)
-            .catch(() => {})
+            .then((d) => { if (d) setZonesData(d); })
+            .catch((e) => console.warn("Failed to load zones:", e))
             .finally(() => setZonesLoading(false));
         },
         economy: () => {
           setEconomyLoading(true);
           apiFetch("/features/economy")
-            .then(setEconomyData)
-            .catch(() => {})
+            .then((d) => { if (d) setEconomyData(d); })
+            .catch((e) => console.warn("Failed to load economy:", e))
             .finally(() => setEconomyLoading(false));
         },
         readiness: () => {
           setReadinessLoading(true);
           apiFetch("/readiness")
             .then((d) => {
+              if (!d) return;
               let components: { name: string; value: number }[] = [];
               if (d.components) {
                 if (Array.isArray(d.components)) {
@@ -1294,28 +1296,28 @@ export default function PerformancePage() {
               }
               setReadinessData({ score: d.score ?? 0, label: d.label ?? "Unknown", components });
             })
-            .catch(() => {})
+            .catch((e) => console.warn("Failed to load readiness:", e))
             .finally(() => setReadinessLoading(false));
         },
         learning: () => {
           setLearningLoading(true);
           apiFetch("/features/learning")
-            .then(setLearningData)
-            .catch(() => {})
+            .then((d) => { if (d) setLearningData(d); })
+            .catch((e) => console.warn("Failed to load learning:", e))
             .finally(() => setLearningLoading(false));
         },
         adjuncts: () => {
           setAdjunctsLoading(true);
           apiFetch("/features/adjuncts")
-            .then((d) => setAdjunctsData(Array.isArray(d) ? d : d.adjuncts ?? []))
-            .catch(() => {})
+            .then((d) => { if (d) setAdjunctsData(Array.isArray(d) ? d : d.adjuncts ?? []); })
+            .catch((e) => console.warn("Failed to load adjuncts:", e))
             .finally(() => setAdjunctsLoading(false));
         },
         "honest-state": () => {
           setHonestStateLoading(true);
           apiFetch("/features/honest-state")
-            .then(setHonestStateData)
-            .catch(() => {})
+            .then((d) => { if (d) setHonestStateData(d); })
+            .catch((e) => console.warn("Failed to load honest-state:", e))
             .finally(() => setHonestStateLoading(false));
         },
         accuracy: () => {

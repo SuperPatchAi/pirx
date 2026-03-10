@@ -122,7 +122,7 @@ class TestTools:
     def test_get_drivers_no_data(self, mock_client_fn):
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = []
 
         result = get_drivers.invoke({"user_id": "test"})
         assert result["drivers"] == []
@@ -131,7 +131,7 @@ class TestTools:
     def test_get_drivers_with_data(self, mock_client_fn):
         mock_client = MagicMock()
         mock_client_fn.return_value = mock_client
-        mock_client.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value.data = [
             {
                 "aerobic_base_seconds": -30,
                 "threshold_density_seconds": -15,

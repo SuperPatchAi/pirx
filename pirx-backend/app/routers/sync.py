@@ -417,3 +417,109 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.exception("recompute_pipeline failed for user %s", user_id)
         return {"status": "error", "user_id": user_id, "error": str(e)}
+
+
+@router.post("/backfill-projections")
+async def backfill_projections(user: dict = Depends(get_current_user)):
+    """Backfill weekly projection snapshots from historical activities.
+
+    Creates projection_state rows at weekly intervals so the projection
+    history chart shows a full time-series instead of a single point.
+    """
+    from datetime import timedelta
+    from app.services.feature_service import FeatureService
+    from app.models.activities import NormalizedActivity
+    from app.ml.projection_engine import ProjectionEngine
+
+    user_id = user["user_id"]
+    db = SupabaseService()
+
+    try:
+        raw = db.get_recent_activities(user_id, days=180)
+        if not raw:
+            return {"status": "no_activities", "snapshots_created": 0}
+
+        activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
+        activities.sort(key=lambda a: a.timestamp or datetime.min)
+
+        avg_pace = CleaningService.compute_runner_avg_pace(activities)
+
+        user_data = db.get_user(user_id) or {}
+        raw_baseline = user_data.get("baseline_time_seconds")
+        if not raw_baseline:
+            paces = []
+            for a in activities:
+                p = a.avg_pace_sec_per_km
+                d = a.distance_meters or 0
+                if p and 223 <= p <= 900 and d > 1600:
+                    paces.append(p)
+            if len(paces) >= 3:
+                paces.sort()
+                raw_baseline = paces[len(paces) // 2] * 5.0
+            else:
+                raw_baseline = 1500.0
+
+        engine = ProjectionEngine()
+        snapshots_created = 0
+
+        if not activities or not activities[0].timestamp:
+            return {"status": "no_timestamps", "snapshots_created": 0}
+
+        start_date = activities[0].timestamp
+        now = datetime.now()
+        current_date = start_date + timedelta(days=14)
+
+        while current_date <= now:
+            window = [a for a in activities if a.timestamp and a.timestamp <= current_date]
+
+            if len(window) >= 5:
+                cleaned = CleaningService.clean_batch(window, avg_pace)
+                if len(cleaned) >= 3:
+                    try:
+                        features = FeatureService.compute_all_features(
+                            cleaned, reference_date=current_date, user_id=user_id
+                        )
+                        state, driver_states = engine.compute_projection(
+                            user_id=user_id,
+                            event="5000",
+                            baseline_time_s=float(raw_baseline),
+                            features=features,
+                        )
+
+                        computed_at_iso = current_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+                        db.insert_projection({
+                            "user_id": user_id,
+                            "event": "5000",
+                            "midpoint_seconds": state.projected_time_seconds,
+                            "range_low_seconds": state.supported_range_low,
+                            "range_high_seconds": state.supported_range_high,
+                            "range_lower": state.supported_range_low,
+                            "range_upper": state.supported_range_high,
+                            "baseline_seconds": state.baseline_time_seconds,
+                            "improvement_since_baseline": state.total_improvement_seconds,
+                            "volatility": state.volatility,
+                            "volatility_score": state.volatility,
+                            "confidence_score": max(0.0, 1.0 - state.volatility / (state.projected_time_seconds or 1)),
+                            "twenty_one_day_change": 0,
+                            "computed_at": computed_at_iso,
+                        })
+
+                        snapshots_created += 1
+                    except Exception:
+                        logger.warning("backfill snapshot failed at %s", current_date, exc_info=True)
+
+            current_date += timedelta(days=7)
+
+        return {
+            "status": "completed",
+            "user_id": user_id,
+            "snapshots_created": snapshots_created,
+            "total_activities": len(activities),
+        }
+    except Exception as e:
+        logger.exception("backfill_projections failed")
+        return {"status": "error", "error": str(e)}

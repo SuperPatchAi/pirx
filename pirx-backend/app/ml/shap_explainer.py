@@ -131,6 +131,9 @@ class SHAPExplainer:
 
             description = FEATURE_DESCRIPTIONS.get(feat, feat)
 
+            if np.isnan(contribution) or np.isinf(contribution):
+                continue
+
             feature_impacts.append({
                 "name": feat,
                 "display_name": description,
@@ -208,10 +211,15 @@ class SHAPExplainer:
             baseline = baselines.get(feat, 1)
             is_inverse = feat in INVERSE_FEATURES
 
-            if is_inverse:
-                ratio = baseline / val if val != 0 else 1
-            else:
-                ratio = val / baseline if baseline != 0 else 1
+            try:
+                if is_inverse:
+                    ratio = baseline / val if val != 0 else 1
+                else:
+                    ratio = val / baseline if baseline != 0 else 1
+                if np.isnan(ratio) or np.isinf(ratio):
+                    continue
+            except (TypeError, ZeroDivisionError):
+                continue
 
             if ratio > 1.15:
                 direction = "above average"
@@ -222,6 +230,9 @@ class SHAPExplainer:
             else:
                 direction = "average"
                 contribution = abs(ratio - 1)
+
+            if np.isnan(contribution) or np.isinf(contribution):
+                continue
 
             feature_states.append({
                 "name": feat,

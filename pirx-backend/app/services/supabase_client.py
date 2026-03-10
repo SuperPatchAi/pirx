@@ -146,19 +146,16 @@ class SupabaseService:
 
     # --- Driver State ---
 
-    def get_latest_drivers(self, user_id: str) -> list[dict]:
-        """Get the most recent driver state row for a user.
-
-        All 5 drivers are stored in one row, so we just need the latest.
-        """
-        result = (
+    def get_latest_drivers(self, user_id: str, event: str = "5000") -> list[dict]:
+        """Get the most recent driver state row for a user and event."""
+        query = (
             self.client.table("driver_state")
             .select("*")
             .eq("user_id", user_id)
-            .order("computed_at", desc=True)
-            .limit(1)
-            .execute()
         )
+        if event:
+            query = query.eq("event", event)
+        result = query.order("computed_at", desc=True).limit(1).execute()
         return result.data
 
     def get_driver_history(self, user_id: str, days: int = 42) -> list[dict]:

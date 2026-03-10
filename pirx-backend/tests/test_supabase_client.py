@@ -145,7 +145,7 @@ class TestDriverOperations:
     def test_get_latest_drivers(self, mock_supabase):
         chain = (
             mock_supabase.table.return_value.select.return_value
-            .eq.return_value.order.return_value.limit.return_value.execute
+            .eq.return_value.eq.return_value.order.return_value.limit.return_value.execute
         )
         chain.return_value.data = [
             {
@@ -164,7 +164,7 @@ class TestDriverOperations:
     def test_get_latest_drivers_empty(self, mock_supabase):
         chain = (
             mock_supabase.table.return_value.select.return_value
-            .eq.return_value.order.return_value.limit.return_value.execute
+            .eq.return_value.eq.return_value.order.return_value.limit.return_value.execute
         )
         chain.return_value.data = []
         svc = SupabaseService()

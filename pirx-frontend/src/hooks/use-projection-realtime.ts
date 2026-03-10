@@ -46,6 +46,11 @@ export function useProjectionRealtime(userId: string | null) {
     (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       if (payload.eventType === "INSERT" && payload.new) {
         const row = payload.new as Record<string, unknown>;
+        const rowEvent = String(row.event ?? "");
+        const currentEvent = useProjectionStore.getState().currentEvent;
+
+        if (rowEvent && rowEvent !== currentEvent) return;
+
         setProjection({
           projectedTimeSeconds: (row.midpoint_seconds ?? 0) as number,
           rangeLower: (row.range_low_seconds ?? row.range_lower ?? 0) as number,

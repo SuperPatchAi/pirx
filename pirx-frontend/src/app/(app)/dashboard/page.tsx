@@ -103,12 +103,15 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const storeSetCurrentEvent = useProjectionStore((s) => s.setCurrentEvent);
+
   const handleEventSelect = useCallback(
     (event: string) => {
       setSelectedEvent(event);
+      storeSetCurrentEvent(event);
       fetchProjection(event);
     },
-    [fetchProjection]
+    [fetchProjection, storeSetCurrentEvent]
   );
 
   const loadDashboardData = useCallback(async () => {

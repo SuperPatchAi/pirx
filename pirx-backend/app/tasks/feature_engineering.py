@@ -22,6 +22,7 @@ def _acquire_dedup_lock(user_id: str, lock_name: str) -> bool:
         acquired = r.set(key, "1", nx=True, ex=DEDUP_TTL_SECONDS)
         return bool(acquired)
     except Exception:
+        logger.warning("Redis dedup lock unavailable for %s user=%s, proceeding anyway", lock_name, user_id, exc_info=True)
         return True
 
 

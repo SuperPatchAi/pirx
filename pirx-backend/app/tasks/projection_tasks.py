@@ -66,7 +66,7 @@ def recompute_all_events(user_id: str) -> dict:
             logger.info("recompute_all_events skipped for user %s (dedup)", user_id)
             return {"user_id": user_id, "status": "deduplicated"}
     except Exception:
-        pass
+        logger.warning("Redis dedup lock unavailable for recompute_all_events user=%s, proceeding anyway", user_id, exc_info=True)
 
     events = ["1500", "3000", "5000", "10000", "21097", "42195"]
     results = {}

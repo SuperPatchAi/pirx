@@ -116,7 +116,7 @@ class ProjectionEngine:
         Returns:
             (ProjectionState, list of 5 DriverStates)
         """
-        if baseline_time_s <= 0:
+        if not baseline_time_s or baseline_time_s <= 0:
             zero_state = ProjectionState(
                 user_id=user_id,
                 event=event,

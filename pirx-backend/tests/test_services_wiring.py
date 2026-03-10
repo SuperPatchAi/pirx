@@ -333,6 +333,7 @@ class TestProjectionService:
         svc = ProjectionService()
 
         with patch.object(svc.db, "get_user", side_effect=Exception("DB error")), \
+             patch.object(svc.db, "get_recent_activities", side_effect=Exception("DB error")), \
              patch.object(svc.db, "get_latest_projection", side_effect=Exception("DB error")), \
              patch.object(svc.driver_service.db, "insert_projection", return_value={}), \
              patch.object(svc.driver_service.db, "insert_driver_state", return_value={}):
@@ -340,7 +341,7 @@ class TestProjectionService:
             state = svc.recompute("u1", "5000", MOCK_FEATURES)
 
         assert state is not None
-        assert state.baseline_time_seconds == 1260.0
+        assert state.baseline_time_seconds == 1500.0
 
 
 class TestCeleryTasks:

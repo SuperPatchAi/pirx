@@ -1,4 +1,5 @@
 from app.ml.projection_engine import ProjectionEngine, ProjectionState
+from app.ml.event_scaling import EventScaler
 from app.services.supabase_client import SupabaseService
 from app.services.driver_service import DriverService
 from app.services.embedding_service import EmbeddingService
@@ -7,6 +8,11 @@ from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+STANDARD_EVENTS = {
+    "1500": 1500, "3000": 3000, "5000": 5000,
+    "10000": 10000, "21097": 21097, "42195": 42195,
+}
 
 
 class ProjectionService:
@@ -26,10 +32,24 @@ class ProjectionService:
         4. If shifted: store, embed, notify
         """
         try:
-            user_data = self.db.get_user(user_id)
-            baseline_time = user_data.get("baseline_time_seconds", 1260.0) if user_data else 1260.0
+            user_data = self.db.get_user(user_id) or {}
+            raw_baseline = user_data.get("baseline_time_seconds")
+            baseline_event = user_data.get("baseline_event") or "5000"
+            if not raw_baseline:
+                raw_baseline = self._estimate_baseline(user_id)
+                baseline_event = "5000"
         except Exception:
-            baseline_time = 1260.0
+            raw_baseline = self._estimate_baseline(user_id)
+            baseline_event = "5000"
+
+        baseline_distance = STANDARD_EVENTS.get(baseline_event, 5000)
+        target_distance = STANDARD_EVENTS.get(event, 5000)
+        if baseline_distance != target_distance:
+            baseline_time = EventScaler.riegel_scale(
+                raw_baseline, baseline_distance, target_distance,
+            )
+        else:
+            baseline_time = raw_baseline
 
         try:
             prev_row = self.db.get_latest_projection(user_id, event)
@@ -80,6 +100,38 @@ class ProjectionService:
                 logger.warning("Failed to send projection notification")
 
         return new_state
+
+    def _estimate_baseline(self, user_id: str) -> float:
+        """Estimate a 5K baseline from recent activity pace when onboarding hasn't been completed.
+
+        Uses the runner's median pace over recent activities to project a 5K time.
+        Falls back to 25:00 (1500s) if no usable data exists.
+        """
+        DEFAULT_5K = 1500.0
+        try:
+            activities = self.db.get_recent_activities(user_id, days=90)
+            paces = []
+            for a in activities:
+                pace = a.get("avg_pace_sec_per_km")
+                dist = a.get("distance_meters", 0)
+                dur = a.get("duration_seconds", 0)
+                if pace is None and dist > 0 and dur > 0:
+                    pace = dur / (dist / 1000)
+                if pace and 223 <= pace <= 900 and dist > 1600:
+                    paces.append(pace)
+            if len(paces) < 3:
+                return DEFAULT_5K
+            paces.sort()
+            median_pace = paces[len(paces) // 2]
+            estimated = median_pace * 5.0
+            logger.info(
+                "Estimated 5K baseline for user %s: %.0fs (median pace %.0f s/km from %d activities)",
+                user_id, estimated, median_pace, len(paces),
+            )
+            return estimated
+        except Exception:
+            logger.warning("Failed to estimate baseline for user %s, using default", user_id)
+            return DEFAULT_5K
 
     def recompute_all_events(self, user_id: str, features: dict) -> dict:
         """Recompute projections for all 6 events."""

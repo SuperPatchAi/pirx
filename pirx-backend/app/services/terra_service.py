@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -147,7 +147,7 @@ class TerraService:
             timestamp=(
                 datetime.fromisoformat(start_time)
                 if start_time
-                else datetime.utcnow()
+                else datetime.now(timezone.utc)
             ),
             duration_seconds=duration,
             distance_meters=distance,

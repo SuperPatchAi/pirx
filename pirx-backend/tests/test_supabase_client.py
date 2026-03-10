@@ -55,7 +55,7 @@ class TestUserOperations:
 
 class TestActivityOperations:
     def test_insert_activity(self, mock_supabase):
-        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        mock_supabase.table.return_value.upsert.return_value.execute.return_value.data = [
             {"activity_id": "a1", "user_id": "u1", "distance_meters": 5000}
         ]
         svc = SupabaseService()
@@ -63,7 +63,7 @@ class TestActivityOperations:
         assert result["activity_id"] == "a1"
 
     def test_insert_activity_fallback(self, mock_supabase):
-        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = []
+        mock_supabase.table.return_value.upsert.return_value.execute.return_value.data = []
         svc = SupabaseService()
         result = svc.insert_activity("u1", {"distance_meters": 5000})
         assert result["user_id"] == "u1"

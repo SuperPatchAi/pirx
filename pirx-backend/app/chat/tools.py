@@ -122,11 +122,15 @@ def get_readiness(user_id: str) -> dict:
     if activities_raw:
         activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
 
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
+
         from app.services.feature_service import FeatureService
 
         features = FeatureService.compute_all_features(activities)
 
-        now = datetime.now(timezone.utc)
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         days_since_last = None
         days_since_threshold = None
         days_since_long_run = None
@@ -136,8 +140,7 @@ def get_readiness(user_id: str) -> dict:
             ts = a.timestamp
             if not ts:
                 continue
-            act_time = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-            diff = (now - act_time).days
+            diff = (now_naive - ts).days
             if days_since_last is None or diff < days_since_last:
                 days_since_last = diff
             if a.activity_type == "threshold" and (
@@ -157,9 +160,7 @@ def get_readiness(user_id: str) -> dict:
             long_runs = [a for a in activities if (a.distance_meters or 0) >= 15000]
             if long_runs:
                 last_long = max(long_runs, key=lambda x: x.timestamp)
-                lt = last_long.timestamp
-                lt = lt if lt.tzinfo else lt.replace(tzinfo=timezone.utc)
-                days_since_long_run = (now - lt).days
+                days_since_long_run = (now_naive - last_long.timestamp).days
             else:
                 days_since_long_run = 30
 

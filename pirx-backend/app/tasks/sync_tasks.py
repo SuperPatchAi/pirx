@@ -285,12 +285,16 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                                 try:
                                     activity = TerraService.normalize_activity(raw_act)
                                     cleaned = CleaningService.clean_activity(activity)
+                                    if cleaned is None:
+                                        continue
                                     if not cleaned.duration_seconds or cleaned.duration_seconds < 60:
                                         continue
+                                    ts_iso = cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat()
                                     db.insert_activity(user_id, {
                                         "source": provider,
                                         "external_id": raw_act.get("id", ""),
-                                        "started_at": cleaned.timestamp.isoformat() if cleaned.timestamp else datetime.now(timezone.utc).isoformat(),
+                                        "timestamp": ts_iso,
+                                        "started_at": ts_iso,
                                         "duration_seconds": cleaned.duration_seconds,
                                         "distance_meters": cleaned.distance_meters,
                                         "avg_hr": cleaned.avg_hr,

@@ -56,6 +56,10 @@ class FeatureService:
         if reference_date.tzinfo is not None:
             reference_date = reference_date.replace(tzinfo=None)
 
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
+
         features = {}
         features.update(FeatureService._compute_volume(activities, reference_date))
         features.update(FeatureService._compute_intensity(activities, reference_date))

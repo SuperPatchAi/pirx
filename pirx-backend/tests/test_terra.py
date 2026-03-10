@@ -117,8 +117,9 @@ class TestExtractHrZones:
 
 
 class TestWebhookSignatureVerification:
-    def test_verify_returns_true_when_no_secret(self):
+    def test_verify_returns_true_when_no_secret(self, monkeypatch):
         """In dev mode with no secret configured, always returns True."""
+        monkeypatch.setattr("app.services.terra_service.settings", type("S", (), {"terra_webhook_secret": ""})())
         assert TerraService.verify_webhook_signature(b"test", "any") is True
 
     def test_verify_valid_signature(self):

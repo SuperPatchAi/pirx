@@ -37,6 +37,12 @@ import {
   XCircle,
 } from "lucide-react";
 import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  type CarouselApi,
+} from "@/components/ui/carousel";
 import { apiFetch } from "@/lib/api";
 import {
   Tooltip,
@@ -1099,6 +1105,17 @@ function AccuracyTab({
   );
 }
 
+const ANALYSIS_SECTIONS = [
+  { key: "drivers", label: "Structural Drivers", icon: BarChart3 },
+  { key: "zones", label: "Zone Distribution", icon: Activity },
+  { key: "economy", label: "Running Economy", icon: Heart },
+  { key: "readiness", label: "Event Readiness", icon: Shield },
+  { key: "learning", label: "What We're Learning", icon: Brain },
+  { key: "adjuncts", label: "Adjunct Analysis", icon: Zap },
+  { key: "honest-state", label: "Current Honest State", icon: BookOpen },
+  { key: "accuracy", label: "Model Accuracy", icon: Target },
+] as const;
+
 /* ────────────────────────────────────────────────────────────
    Main Performance Page
    ──────────────────────────────────────────────────────────── */
@@ -1111,8 +1128,9 @@ export default function PerformancePage() {
   const [trendsRangeData, setTrendsRangeData] = useState<{ date: string; low: number; high: number }[] | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [fetchedTabs, setFetchedTabs] = useState<Set<string>>(new Set());
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<{ event: string; time_seconds: number; race_date: string | null } | null>(null);
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [activeSlide, setActiveSlide] = useState(0);
 
   // Lazy-loaded tab state
   const [driversData, setDriversData] = useState<Driver[] | null>(null);
@@ -1243,7 +1261,6 @@ export default function PerformancePage() {
 
   const handleSectionToggle = useCallback(
     (section: string, open: boolean) => {
-      setExpandedSection(open ? section : null);
       if (!open) return;
 
       const loaders: Record<string, () => void> = {
@@ -1336,6 +1353,25 @@ export default function PerformancePage() {
     [lazyFetch]
   );
 
+  useEffect(() => {
+    if (!carouselApi) return;
+    const onSelect = () => {
+      const idx = carouselApi.selectedScrollSnap();
+      setActiveSlide(idx);
+      const section = ANALYSIS_SECTIONS[idx];
+      if (section) handleSectionToggle(section.key, true);
+    };
+    onSelect();
+    carouselApi.on("select", onSelect);
+    return () => { carouselApi.off("select", onSelect); };
+  }, [carouselApi, handleSectionToggle]);
+
+  useEffect(() => {
+    if (activeTab === "analysis") {
+      handleSectionToggle("drivers", true);
+    }
+  }, [activeTab, handleSectionToggle]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1343,17 +1379,6 @@ export default function PerformancePage() {
       </div>
     );
   }
-
-  const ANALYSIS_SECTIONS = [
-    { key: "drivers", label: "Structural Drivers", icon: BarChart3 },
-    { key: "zones", label: "Zone Distribution", icon: Activity },
-    { key: "economy", label: "Running Economy", icon: Heart },
-    { key: "readiness", label: "Event Readiness", icon: Shield },
-    { key: "learning", label: "What We're Learning", icon: Brain },
-    { key: "adjuncts", label: "Adjunct Analysis", icon: Zap },
-    { key: "honest-state", label: "Current Honest State", icon: BookOpen },
-    { key: "accuracy", label: "Model Accuracy", icon: Target },
-  ] as const;
 
   const renderAnalysisContent = (key: string) => {
     switch (key) {
@@ -1450,35 +1475,41 @@ export default function PerformancePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analysis" className="space-y-3 mt-4">
-          {ANALYSIS_SECTIONS.map(({ key, label, icon: Icon }) => (
-            <Collapsible
-              key={key}
-              open={expandedSection === key}
-              onOpenChange={(open) => handleSectionToggle(key, open)}
-            >
-              <Card className="border-border/40">
-                <CollapsibleTrigger className="w-full text-left">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Icon className={`h-4 w-4 ${expandedSection === key ? "text-green-500" : "text-muted-foreground"}`} />
-                      <p className="text-sm font-medium">{label}</p>
-                    </div>
-                    <ChevronDown
-                      className={`h-4 w-4 text-muted-foreground transition-transform ${
-                        expandedSection === key ? "rotate-180" : ""
-                      }`}
-                    />
-                  </CardContent>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="px-4 pb-4 border-t border-border/40 pt-4">
-                    {renderAnalysisContent(key)}
-                  </div>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          ))}
+        <TabsContent value="analysis" className="mt-4">
+          <Carousel opts={{ loop: false, align: "center" }} setApi={setCarouselApi}>
+            <CarouselContent>
+              {ANALYSIS_SECTIONS.map(({ key, label, icon: Icon }) => (
+                <CarouselItem key={key}>
+                  <Card className="border-border/40 min-h-[420px]">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-green-500" /> {label}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>{renderAnalysisContent(key)}</CardContent>
+                  </Card>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+          </Carousel>
+
+          <div className="flex flex-col items-center gap-2 mt-4">
+            <p className="text-xs font-medium text-muted-foreground">
+              {ANALYSIS_SECTIONS[activeSlide]?.label}
+            </p>
+            <div className="flex gap-1.5">
+              {ANALYSIS_SECTIONS.map((s, i) => (
+                <button
+                  key={s.key}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === activeSlide ? "w-4 bg-green-500" : "w-1.5 bg-muted-foreground/30"
+                  }`}
+                  onClick={() => carouselApi?.scrollTo(i)}
+                  aria-label={`Go to ${s.label}`}
+                />
+              ))}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

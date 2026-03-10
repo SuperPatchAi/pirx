@@ -8,16 +8,14 @@ import pytest
 from app.services.terra_service import (
     TerraService,
     classify_terra_type,
+    classify_terra_activity,
     extract_hr_zones,
 )
 
 
 class TestClassifyTerraType:
-    """Tests use the official Terra ActivityType enum codes.
-
-    Key codes: 0=In Vehicle, 1=Biking, 7=Walking, 8=Running, 35=Hiking,
-    56=Jogging, 57=Running On Sand, 58=Treadmill Running, 80=Strength Training,
-    82=Swimming, 83=Swimming In Pool, 100=Yoga, 133=Indoor Running.
+    """Legacy wrapper tests — classify_terra_type delegates to classify_terra_activity
+    without HR/pace data, so running codes default to 'easy'.
     """
 
     def test_running_maps_to_easy(self):
@@ -81,6 +79,145 @@ class TestClassifyTerraType:
         assert classify_terra_type(4) == "cross-training"
 
 
+class TestClassifyTerraActivity:
+    """Full classifier tests with HR, pace, and distance data.
+
+    These mirror real Garmin data arriving via Terra webhooks.
+    """
+
+    # --- Name-based overrides still take priority ---
+    def test_race_name_overrides_all(self):
+        assert classify_terra_activity(8, "Morning parkrun", avg_hr=130, max_hr=180) == "race"
+
+    def test_interval_name_overrides_all(self):
+        assert classify_terra_activity(8, "Track Repeats", avg_hr=130, max_hr=180) == "interval"
+
+    def test_tempo_name_overrides_all(self):
+        assert classify_terra_activity(8, "Tempo Thursday", avg_hr=130, max_hr=180) == "interval"
+
+    def test_recovery_name_maps_to_easy(self):
+        assert classify_terra_activity(8, "Recovery Run", avg_hr=130, max_hr=180) == "easy"
+
+    def test_vo2_name_maps_to_interval(self):
+        assert classify_terra_activity(8, "VO2 Max Session", avg_hr=130, max_hr=180) == "interval"
+
+    # --- HR-based intensity detection ---
+    def test_high_hr_race_distance_is_race(self):
+        """1500m at HR 172 (91% of 190) on a standard race distance → race"""
+        result = classify_terra_activity(
+            133, "Indoor Running",
+            pace_sec_per_km=205, avg_hr=172, max_hr=190,
+            distance_meters=1500, duration_seconds=308,
+        )
+        assert result == "race"
+
+    def test_very_high_hr_3k_race_distance_is_race(self):
+        """3000m at HR 175 (92% of 190) on a standard race distance → race"""
+        result = classify_terra_activity(
+            133, "Indoor Running",
+            pace_sec_per_km=224, avg_hr=175, max_hr=190,
+            distance_meters=3000, duration_seconds=673,
+        )
+        assert result == "race"
+
+    def test_high_hr_non_race_distance_is_interval(self):
+        """2000m at HR 172 (91% of 190) NOT a race distance → interval"""
+        result = classify_terra_activity(
+            133, "Indoor Running",
+            pace_sec_per_km=210, avg_hr=172, max_hr=190,
+            distance_meters=2000, duration_seconds=420,
+        )
+        assert result == "interval"
+
+    def test_labelled_repeats_overrides_race_distance(self):
+        """1500m repeats labelled as intervals → interval (name wins)"""
+        result = classify_terra_activity(
+            133, "1500m Repeats",
+            pace_sec_per_km=205, avg_hr=172, max_hr=190,
+            distance_meters=1500, duration_seconds=308,
+        )
+        assert result == "interval"
+
+    def test_threshold_hr_is_threshold(self):
+        """5250m at HR 156 (82% of 190) → threshold"""
+        result = classify_terra_activity(
+            58, "Treadmill Running",
+            pace_sec_per_km=274, avg_hr=156, max_hr=190,
+            distance_meters=5250, duration_seconds=1440,
+        )
+        assert result == "threshold"
+
+    def test_easy_hr_is_easy(self):
+        """8000m at HR 134 (70% of 190) → easy"""
+        result = classify_terra_activity(
+            58, "Treadmill Running",
+            pace_sec_per_km=320, avg_hr=134, max_hr=190,
+            distance_meters=8000, duration_seconds=2559,
+        )
+        assert result == "easy"
+
+    def test_moderate_hr_12k_is_easy(self):
+        """12000m at HR 148 (78% of 190) → easy (below threshold cutoff)"""
+        result = classify_terra_activity(
+            58, "Treadmill Running",
+            pace_sec_per_km=286, avg_hr=148, max_hr=190,
+            distance_meters=12000, duration_seconds=3432,
+        )
+        assert result == "easy"
+
+    # --- Race detection: standard distance + high HR ---
+    def test_5k_race_distance_high_hr(self):
+        """5000m at HR 170 (89% of 190) on a race distance → race"""
+        result = classify_terra_activity(
+            8, "Toronto Running",
+            pace_sec_per_km=240, avg_hr=170, max_hr=190,
+            distance_meters=5000, duration_seconds=1200,
+        )
+        assert result == "race"
+
+    def test_10k_race_distance_high_hr(self):
+        """10000m at HR 172 (91% of 190) on a race distance → race"""
+        result = classify_terra_activity(
+            8, "Toronto Running",
+            pace_sec_per_km=270, avg_hr=172, max_hr=190,
+            distance_meters=10000, duration_seconds=2700,
+        )
+        assert result == "race"
+
+    # --- Cross-training is unaffected by HR ---
+    def test_cycling_stays_cross_training(self):
+        result = classify_terra_activity(
+            1, "Cycling", avg_hr=160, max_hr=190,
+            distance_meters=20000, duration_seconds=3600,
+        )
+        assert result == "cross-training"
+
+    def test_strength_stays_cross_training(self):
+        result = classify_terra_activity(
+            80, "Strength Training", avg_hr=140, max_hr=190,
+        )
+        assert result == "cross-training"
+
+    # --- No HR: pace-based fallback ---
+    def test_very_fast_short_no_hr_is_interval(self):
+        """Short distance, fast pace, no HR → interval"""
+        result = classify_terra_activity(
+            8, "Running",
+            pace_sec_per_km=210, avg_hr=None, max_hr=None,
+            distance_meters=1500, duration_seconds=315,
+        )
+        assert result == "interval"
+
+    def test_no_hr_moderate_pace_is_easy(self):
+        """No HR data, moderate pace → defaults to easy"""
+        result = classify_terra_activity(
+            8, "Running",
+            pace_sec_per_km=320, avg_hr=None, max_hr=None,
+            distance_meters=8000, duration_seconds=2560,
+        )
+        assert result == "easy"
+
+
 SAMPLE_TERRA_ACTIVITY = {
     "start_time": "2026-03-01T08:00:00+00:00",
     "metadata": {"type": 8, "name": "Morning Run", "provider": "GARMIN"},
@@ -89,7 +226,7 @@ SAMPLE_TERRA_ACTIVITY = {
         "summary": {"distance_meters": 8000.0},
     },
     "heart_rate_data": {
-        "summary": {"avg_hr_bpm": 148, "max_hr_bpm": 172},
+        "summary": {"avg_hr_bpm": 138, "max_hr_bpm": 172},
         "hr_zones": [
             {"zone": 1, "duration_seconds": 120},
             {"zone": 2, "duration_seconds": 1200},
@@ -108,7 +245,7 @@ class TestTerraServiceNormalize:
         assert result.source == "garmin"
         assert result.duration_seconds == 2400
         assert result.distance_meters == 8000.0
-        assert result.avg_hr == 148
+        assert result.avg_hr == 138
         assert result.max_hr == 172
         assert result.activity_type == "easy"
         assert result.avg_pace_sec_per_km == 300.0

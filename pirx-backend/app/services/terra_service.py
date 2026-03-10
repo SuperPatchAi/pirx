@@ -135,8 +135,17 @@ class TerraService:
         distance = float(distance_data.get("distance_meters", 0))
         pace = (duration / (distance / 1000)) if distance > 0 else None
 
-        activity_type = classify_terra_type(
-            metadata.get("type", 0), metadata.get("name", ""),
+        avg_hr = hr_data.get("avg_hr_bpm")
+        max_hr = hr_data.get("max_hr_bpm")
+
+        activity_type = classify_terra_activity(
+            type_code=metadata.get("type", 0),
+            name=metadata.get("name", ""),
+            pace_sec_per_km=pace,
+            avg_hr=avg_hr,
+            max_hr=max_hr,
+            distance_meters=distance,
+            duration_seconds=duration,
         )
         provider = metadata.get("provider", "unknown").lower()
 
@@ -151,8 +160,8 @@ class TerraService:
             ),
             duration_seconds=duration,
             distance_meters=distance,
-            avg_hr=hr_data.get("avg_hr_bpm"),
-            max_hr=hr_data.get("max_hr_bpm"),
+            avg_hr=avg_hr,
+            max_hr=max_hr,
             avg_pace_sec_per_km=pace,
             elevation_gain_m=(
                 distance_data.get("elevation", {}).get("gain_actual_meters")
@@ -171,8 +180,11 @@ class TerraService:
         )
 
 
+# ---------------------------------------------------------------------------
+# Stage 1: Terra type code → sport category (running vs not-running)
 # Official Terra ActivityType enum
 # Source: https://docs.tryterra.co/reference/health-and-fitness-api/data-models#activitytype
+# ---------------------------------------------------------------------------
 TERRA_RUNNING_CODES = {8, 56, 57, 58, 133}  # Running, Jogging, Running On Sand, Treadmill Running, Indoor Running
 TERRA_CROSS_TRAINING_CODES = {
     1, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -187,39 +199,113 @@ TERRA_CROSS_TRAINING_CODES = {
 TERRA_WALK_HIKE_CODES = {7, 35}  # Walking, Hiking
 
 
-def classify_terra_type(type_code: int, name: str = "") -> str:
-    """Map Terra activity type code + name to a PIRX activity type.
+def _is_running_sport(type_code: int, name: str) -> bool:
+    """Determine if the Terra type code represents a running sport."""
+    if type_code in TERRA_RUNNING_CODES:
+        return True
+    if type_code in TERRA_CROSS_TRAINING_CODES or type_code in TERRA_WALK_HIKE_CODES:
+        return False
+    name_lower = name.lower()
+    return any(kw in name_lower for kw in ("run", "running", "jog", "jogging"))
 
-    Uses the official Terra ActivityType enum for deterministic mapping.
-    Name keywords override the type code to handle user-labelled workouts
-    (e.g. Garmin "Tempo Thursday" that arrives as generic Running type=8).
+
+# ---------------------------------------------------------------------------
+# Stage 2: Intensity classification for running activities
+#
+# Terra type codes don't distinguish easy/threshold/interval/race.
+# Garmin labels (e.g. "Interval", "Tempo") get flattened by Terra into
+# generic type=8 "Running". We classify intensity using:
+#   1. Activity name keywords (user-labelled workouts)
+#   2. HR intensity (avg_hr as % of estimated max_hr)
+#   3. Pace relative to runner profile (short + fast = interval/race)
+#   4. Standard race distance matching
+# ---------------------------------------------------------------------------
+
+# Distances (meters) that match standard race events (±5% tolerance)
+_RACE_DISTANCES = [
+    (1400, 1600),    # 1500m / mile
+    (2900, 3200),    # 3000m / 2-mile
+    (4750, 5250),    # 5K
+    (9500, 10500),   # 10K
+    (20500, 21700),  # Half marathon
+    (41000, 43000),  # Marathon
+]
+
+
+def classify_terra_activity(
+    type_code: int,
+    name: str = "",
+    pace_sec_per_km: float | None = None,
+    avg_hr: int | None = None,
+    max_hr: int | None = None,
+    distance_meters: float = 0,
+    duration_seconds: int = 0,
+) -> str:
+    """Two-stage classifier: sport detection then intensity classification.
+
+    Stage 1 uses Terra type codes to separate running from cross-training.
+    Stage 2 uses name keywords, HR, pace, and distance to classify running
+    intensity into easy / threshold / interval / race.
     """
+    if not _is_running_sport(type_code, name):
+        return "cross-training"
+
+    # --- Name-based overrides (highest priority for labelled workouts) ---
     name_lower = name.lower()
 
-    race_keywords = ["race", "competition", "parkrun"]
-    interval_keywords = ["interval", "tempo", "threshold", "speed", "fartlek", "track"]
-
+    race_keywords = ["race", "competition", "parkrun", "5k race", "10k race"]
     if any(kw in name_lower for kw in race_keywords):
         return "race"
+
+    interval_keywords = [
+        "interval", "tempo", "threshold", "speed", "fartlek", "track",
+        "repeat", "vo2", "v02",
+    ]
     if any(kw in name_lower for kw in interval_keywords):
         return "interval"
 
-    if type_code in TERRA_RUNNING_CODES:
+    recovery_keywords = ["recovery", "warm up", "warmup", "cool down", "cooldown", "shake"]
+    if any(kw in name_lower for kw in recovery_keywords):
         return "easy"
 
-    if type_code in TERRA_CROSS_TRAINING_CODES:
-        return "cross-training"
+    # --- HR-based intensity detection ---
+    # Estimate max HR if not provided (220 - age fallback: assume ~190 for adult runner)
+    estimated_max = max_hr if max_hr and max_hr > 150 else 190
+    hr_pct = (avg_hr / estimated_max) if avg_hr and estimated_max > 0 else None
 
-    if type_code in TERRA_WALK_HIKE_CODES:
-        return "cross-training"
+    # --- Race detection: standard distance + high intensity ---
+    if distance_meters > 0 and hr_pct is not None:
+        is_race_distance = any(lo <= distance_meters <= hi for lo, hi in _RACE_DISTANCES)
+        if is_race_distance and hr_pct >= 0.88:
+            return "race"
 
-    # type_code 0 (In Vehicle), 3 (Still), 4 (Unknown), 5 (Tilting), or
-    # any future code not yet catalogued — check name for running keywords.
-    running_name_keywords = ["run", "running", "jog", "jogging"]
-    if any(kw in name_lower for kw in running_name_keywords):
-        return "easy"
+    # --- Intensity zones based on HR percentage of max ---
+    # Zone 5 (>90%): interval / race-pace
+    # Zone 4 (82-90%): threshold / tempo
+    # Zone 3 (72-82%): moderate / steady
+    # Zone 1-2 (<72%): easy
+    if hr_pct is not None:
+        if hr_pct >= 0.90:
+            if distance_meters > 0 and distance_meters <= 3200 and (duration_seconds or 0) < 1200:
+                return "interval"
+            return "interval"
+        if hr_pct >= 0.82:
+            return "threshold"
 
-    return "cross-training"
+    # --- Pace-based fallback when HR is unavailable ---
+    # Short + fast relative to what would be sustainable = likely interval
+    if pace_sec_per_km and pace_sec_per_km < 240 and distance_meters <= 5000:
+        return "interval"
+
+    return "easy"
+
+
+def classify_terra_type(type_code: int, name: str = "") -> str:
+    """Legacy wrapper — delegates to classify_terra_activity without HR/pace data.
+
+    Kept for backward compatibility with existing callers and tests.
+    """
+    return classify_terra_activity(type_code=type_code, name=name)
 
 
 def extract_hr_zones(terra_activity: dict) -> Optional[list[float]]:

@@ -124,3 +124,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .glow-green {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);
+  }
+  .glow-green-sm {
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.1);
+  }
+  .glow-green-lg {
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.08);
+  }
+  .card-hover {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .card-hover:hover {
+    box-shadow: 0 2px 20px rgba(34, 197, 94, 0.06);
+    transform: translateY(-1px);
+  }
+  .glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(34, 197, 94, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(34, 197, 94, 0.5); }
+  }
+}

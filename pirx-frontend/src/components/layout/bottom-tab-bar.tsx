@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, BarChart3, Heart, Settings, Users } from "lucide-react";
+import { Home, BarChart3, Heart, Settings, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/performance", label: "Performance", icon: BarChart3 },
-  { href: "/coach", label: "Coach", icon: Users },
+  { href: "/performance", label: "Trends", icon: BarChart3 },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/physiology", label: "Physiology", icon: Heart },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
@@ -33,7 +33,7 @@ export function BottomTabBar() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Icon className={cn("h-5 w-5", isActive && "drop-shadow-[0_0_6px_rgba(34,197,94,0.4)]")} />
+              <Icon className={cn("h-5 w-5 transition-all", isActive && "drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]")} />
               <span className="uppercase">{label}</span>
             </Link>
           );

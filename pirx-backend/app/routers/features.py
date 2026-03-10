@@ -296,3 +296,90 @@ async def get_honest_state(user: dict = Depends(get_current_user)):
         "what_is_defensible": summary["what_is_defensible"],
         "what_needs_development": summary["what_needs_development"],
     }
+
+
+@router.get("/weekly-volume")
+async def get_weekly_volume(user: dict = Depends(get_current_user)):
+    """Get this week's running volume grouped by day and intensity."""
+    from datetime import datetime, timedelta, timezone
+
+    db = SupabaseService()
+    now = datetime.now(timezone.utc)
+    monday = now - timedelta(days=now.weekday())
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    activities = db.get_recent_activities(user["user_id"], days=7)
+    if not activities:
+        return {"days": [], "total_km": 0}
+
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    buckets = {d: {"day": d, "easy": 0.0, "tempo": 0.0, "long": 0.0} for d in day_names}
+    total_km = 0.0
+
+    for a in activities:
+        ts = a.get("timestamp")
+        if not ts:
+            continue
+        if isinstance(ts, str):
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                continue
+        else:
+            dt = ts
+        weekday = dt.weekday()
+        if weekday > 6:
+            continue
+        day_key = day_names[weekday]
+        dist_km = float(a.get("distance_meters") or 0) / 1000
+        total_km += dist_km
+
+        activity_type = (a.get("activity_type") or "easy").lower()
+        if activity_type in ("threshold", "interval", "tempo"):
+            buckets[day_key]["tempo"] += dist_km
+        elif dist_km >= 15:
+            buckets[day_key]["long"] += dist_km
+        else:
+            buckets[day_key]["easy"] += dist_km
+
+    days = [buckets[d] for d in day_names]
+    for d in days:
+        d["easy"] = round(d["easy"], 1)
+        d["tempo"] = round(d["tempo"], 1)
+        d["long"] = round(d["long"], 1)
+
+    return {"days": days, "total_km": round(total_km, 1)}
+
+
+@router.get("/hr-trend")
+async def get_hr_trend(user: dict = Depends(get_current_user)):
+    """Get heart rate trend data for the last 14 days."""
+    from datetime import datetime, timezone
+
+    db = SupabaseService()
+    activities = db.get_recent_activities(user["user_id"], days=14)
+    if not activities:
+        return {"points": [], "avg": None, "max": None}
+
+    points = []
+    hr_values = []
+    max_hrs = []
+
+    for a in activities:
+        avg_hr = a.get("avg_hr")
+        if not avg_hr:
+            continue
+        ts = a.get("timestamp", "")
+        date_str = ts[:10] if isinstance(ts, str) else ""
+        points.append({"date": date_str, "avg_hr": int(avg_hr)})
+        hr_values.append(int(avg_hr))
+        max_hr = a.get("max_hr")
+        if max_hr:
+            max_hrs.append(int(max_hr))
+
+    points.sort(key=lambda p: p["date"])
+
+    avg = round(sum(hr_values) / len(hr_values)) if hr_values else None
+    peak = max(max_hrs) if max_hrs else (max(hr_values) if hr_values else None)
+
+    return {"points": points, "avg": avg, "max": peak}

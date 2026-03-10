@@ -6,12 +6,17 @@ import { EventSwiper } from "@/components/home/event-swiper";
 import { DriverStrip, type DriverApiItem } from "@/components/home/driver-strip";
 import { QuickMetrics } from "@/components/home/quick-metrics";
 import { SyncBanner } from "@/components/home/sync-banner";
+import { ReadinessRing } from "@/components/home/readiness-ring";
+import { WeeklyVolumeChart } from "@/components/home/weekly-volume-chart";
+import { HrSparkline } from "@/components/home/hr-sparkline";
+import { AnimatedSection } from "@/components/ui/animated-section";
+import { DashboardSkeleton } from "@/components/ui/skeleton-card";
 import { useProjectionRealtime } from "@/hooks/use-projection-realtime";
 import { useProjectionStore } from "@/stores/projection-store";
 import { useTourStore } from "@/stores/tour-store";
 import { useAuth } from "@/hooks/use-auth";
 import { ShareModal, type CardData } from "@/components/social/share-modal";
-import { Loader2, Share2 } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const EMPTY_PROJECTION = {
@@ -55,6 +60,8 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<{ sessions: number | null; distanceKm: number | null; acwr: number | null }>({ sessions: null, distanceKm: null, acwr: null });
   const [syncStatus, setSyncStatus] = useState<{ lastSync: string | null; syncing: boolean }>({ lastSync: null, syncing: false });
   const [selectedEvent, setSelectedEvent] = useState("5000");
+  const [weeklyVolume, setWeeklyVolume] = useState<{ days: { day: string; easy: number; tempo: number; long: number }[]; total_km: number } | null>(null);
+  const [hrTrend, setHrTrend] = useState<{ points: { date: string; avg_hr: number }[]; avg: number | null; max: number | null } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [cardData, setCardData] = useState<CardData | null>(null);
   const [cohortPercentile, setCohortPercentile] = useState<number | null>(null);
@@ -117,13 +124,15 @@ export default function DashboardPage() {
   const loadDashboardData = useCallback(async () => {
     try {
       const { apiFetch } = await import("@/lib/api");
-      const [projData, driversData, readinessData, allEventsData, weeklyData, syncData] = await Promise.allSettled([
+      const [projData, driversData, readinessData, allEventsData, weeklyData, syncData, volumeData, hrData] = await Promise.allSettled([
         apiFetch(`/projection?event=${selectedEvent}`),
         apiFetch("/drivers"),
         apiFetch("/readiness"),
         apiFetch("/projection/all"),
         apiFetch("/metrics/weekly"),
         apiFetch("/sync/status"),
+        apiFetch("/features/weekly-volume"),
+        apiFetch("/features/hr-trend"),
       ]);
 
       if (projData.status === "fulfilled") setProjection(projData.value as Record<string, unknown>);
@@ -169,6 +178,12 @@ export default function DashboardPage() {
         const s = syncData.value as { connections?: Array<{ last_sync?: string }> };
         const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
         setSyncStatus((prev) => ({ ...prev, lastSync: latest }));
+      }
+      if (volumeData.status === "fulfilled") {
+        setWeeklyVolume(volumeData.value as { days: { day: string; easy: number; tempo: number; long: number }[]; total_km: number });
+      }
+      if (hrData.status === "fulfilled") {
+        setHrTrend(hrData.value as { points: { date: string; avg_hr: number }[]; avg: number | null; max: number | null });
       }
     } catch {
       // keep existing data on failure
@@ -222,54 +237,82 @@ export default function DashboardPage() {
   const change21d = (projection?.twenty_one_day_change as number) ?? EMPTY_PROJECTION.twenty_one_day_change;
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
     <div className="space-y-6">
-      <SyncBanner lastSync={syncStatus.lastSync} syncing={syncStatus.syncing} onSyncNow={handleSyncNow} />
+      <AnimatedSection delay={0}>
+        <SyncBanner lastSync={syncStatus.lastSync} syncing={syncStatus.syncing} onSyncNow={handleSyncNow} />
+      </AnimatedSection>
 
-      <div data-tour="projection-tile" className="relative">
-        <ProjectionTile
-          event={selectedEvent}
-          projectedTime={projTime}
-          range={projRange}
-          improvementSeconds={improvement}
-          twentyOneDayChange={change21d}
+      <AnimatedSection delay={0.05}>
+        <div data-tour="projection-tile" className="relative">
+          <ProjectionTile
+            event={selectedEvent}
+            projectedTime={projTime}
+            range={projRange}
+            improvementSeconds={improvement}
+            twentyOneDayChange={change21d}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
+            onClick={handleShare}
+            aria-label="Share projection"
+          >
+            <Share2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </AnimatedSection>
+
+      <AnimatedSection delay={0.1}>
+        <div data-tour="event-swiper">
+          <EventSwiper
+            apiData={allEvents}
+            selectedEvent={selectedEvent}
+            onEventSelect={handleEventSelect}
+          />
+        </div>
+      </AnimatedSection>
+
+      <AnimatedSection delay={0.15}>
+        <div data-tour="driver-strip">
+          <DriverStrip apiData={drivers} />
+        </div>
+      </AnimatedSection>
+
+      <AnimatedSection delay={0.2}>
+        <WeeklyVolumeChart
+          data={weeklyVolume?.days ?? null}
+          totalKm={weeklyVolume?.total_km ?? null}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-          onClick={handleShare}
-          aria-label="Share projection"
-        >
-          <Share2 className="h-4 w-4" />
-        </Button>
-      </div>
+      </AnimatedSection>
 
-      <div data-tour="event-swiper">
-        <EventSwiper
-          apiData={allEvents}
-          selectedEvent={selectedEvent}
-          onEventSelect={handleEventSelect}
+      <AnimatedSection delay={0.25}>
+        <QuickMetrics
+          readinessScore={readiness ? (readiness.score as number) : null}
+          sessionsPerWeek={metrics.sessions}
+          distanceKmPerWeek={metrics.distanceKm}
+          acwr={metrics.acwr}
         />
-      </div>
+      </AnimatedSection>
 
-      <div data-tour="driver-strip">
-        <DriverStrip apiData={drivers} />
-      </div>
+      <AnimatedSection delay={0.28}>
+        <ReadinessRing
+          score={readiness ? (readiness.score as number) : null}
+          staminaPct={readiness ? Math.round(((readiness.score as number) ?? 0) * 0.74) : null}
+        />
+      </AnimatedSection>
 
-      <QuickMetrics
-        readinessScore={readiness ? (readiness.score as number) : null}
-        sessionsPerWeek={metrics.sessions}
-        distanceKmPerWeek={metrics.distanceKm}
-        acwr={metrics.acwr}
-      />
+      <AnimatedSection delay={0.3}>
+        <HrSparkline
+          data={hrTrend?.points ?? null}
+          avg={hrTrend?.avg ?? null}
+          max={hrTrend?.max ?? null}
+        />
+      </AnimatedSection>
 
       <ShareModal
         open={shareOpen}

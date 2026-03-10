@@ -78,7 +78,7 @@ export function ProjectionTile({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="border-border/60 bg-card overflow-hidden relative">
+      <Card className="border-border/60 bg-card overflow-hidden relative glow-green-lg">
         <div className="absolute inset-0 bg-gradient-to-b from-green-500/6 to-transparent pointer-events-none" />
         <CardContent className="p-5 space-y-4 relative">
           <div className="flex items-center justify-between">

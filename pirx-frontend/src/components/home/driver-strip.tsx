@@ -52,7 +52,7 @@ export function DriverStrip({ apiData }: DriverStripProps) {
   const netSeconds = drivers.reduce((sum, d) => sum + d.contributionSeconds, 0);
 
   return (
-    <Card className="border-border/40">
+    <Card className="border-border/40 card-hover">
       <CardContent className="p-5 space-y-4">
         <div className="flex items-start justify-between">
           <div>

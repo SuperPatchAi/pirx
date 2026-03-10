@@ -52,8 +52,8 @@ export function EventSwiper({
               <Card
                 className={`w-[130px] transition-all ${
                   isSelected
-                    ? "border-green-500/60 ring-1 ring-green-500/30 bg-green-500/5"
-                    : "border-border/40 hover:border-border"
+                    ? "border-green-500/60 ring-1 ring-green-500/30 bg-green-500/5 glow-green-sm"
+                    : "border-border/40 hover:border-border card-hover"
                 }`}
               >
                 <CardContent className="p-3 space-y-1.5">

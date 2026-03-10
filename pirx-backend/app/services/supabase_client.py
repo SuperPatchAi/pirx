@@ -97,6 +97,21 @@ class SupabaseService:
         )
         return result.data or []
 
+    def get_activities_range(
+        self, user_id: str, from_iso: str, to_iso: str
+    ) -> list[dict]:
+        """Get activities between from_iso and to_iso (inclusive)."""
+        result = (
+            self.client.table("activities")
+            .select("*")
+            .eq("user_id", user_id)
+            .gte("timestamp", from_iso)
+            .lte("timestamp", to_iso)
+            .order("timestamp", desc=True)
+            .execute()
+        )
+        return result.data or []
+
     def get_race_activities(self, user_id: str) -> list[dict]:
         result = (
             self.client.table("activities")

@@ -83,7 +83,7 @@ class TestProcessActivityTask:
         mock_compute.delay = MagicMock()
         raw = {
             "start_time": "2026-03-01T08:00:00+00:00",
-            "metadata": {"type": 1, "name": "Morning Run", "provider": "GARMIN"},
+            "metadata": {"type": 8, "name": "Morning Run", "provider": "GARMIN"},
             "active_durations_data": {"activity_seconds": 2400},
             "distance_data": {"summary": {"distance_meters": 8000.0}},
             "heart_rate_data": {"summary": {"avg_hr_bpm": 148, "max_hr_bpm": 172}},

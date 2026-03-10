@@ -13,40 +13,77 @@ from app.services.terra_service import (
 
 
 class TestClassifyTerraType:
+    """Tests use the official Terra ActivityType enum codes.
+
+    Key codes: 0=In Vehicle, 1=Biking, 7=Walking, 8=Running, 35=Hiking,
+    56=Jogging, 57=Running On Sand, 58=Treadmill Running, 80=Strength Training,
+    82=Swimming, 83=Swimming In Pool, 100=Yoga, 133=Indoor Running.
+    """
+
     def test_running_maps_to_easy(self):
-        assert classify_terra_type(1) == "easy"
+        assert classify_terra_type(8) == "easy"
 
-    def test_trail_running_maps_to_easy(self):
-        assert classify_terra_type(12) == "easy"
+    def test_jogging_maps_to_easy(self):
+        assert classify_terra_type(56) == "easy"
 
-    def test_virtual_run_maps_to_easy(self):
-        assert classify_terra_type(83) == "easy"
+    def test_treadmill_running_maps_to_easy(self):
+        assert classify_terra_type(58) == "easy"
 
-    def test_cycling_maps_to_cross_training(self):
-        assert classify_terra_type(2) == "cross-training"
+    def test_indoor_running_maps_to_easy(self):
+        assert classify_terra_type(133) == "easy"
+
+    def test_running_on_sand_maps_to_easy(self):
+        assert classify_terra_type(57) == "easy"
+
+    def test_biking_maps_to_cross_training(self):
+        assert classify_terra_type(1) == "cross-training"
+
+    def test_swimming_maps_to_cross_training(self):
+        assert classify_terra_type(82) == "cross-training"
+
+    def test_swimming_in_pool_maps_to_cross_training(self):
+        assert classify_terra_type(83) == "cross-training"
+
+    def test_walking_maps_to_cross_training(self):
+        assert classify_terra_type(7) == "cross-training"
+
+    def test_hiking_maps_to_cross_training(self):
+        assert classify_terra_type(35) == "cross-training"
+
+    def test_yoga_maps_to_cross_training(self):
+        assert classify_terra_type(100) == "cross-training"
+
+    def test_strength_maps_to_cross_training(self):
+        assert classify_terra_type(80) == "cross-training"
 
     def test_race_keyword_overrides_type(self):
-        assert classify_terra_type(1, "Morning parkrun") == "race"
+        assert classify_terra_type(8, "Morning parkrun") == "race"
 
     def test_competition_keyword(self):
-        assert classify_terra_type(1, "10K Competition") == "race"
+        assert classify_terra_type(8, "10K Competition") == "race"
 
     def test_interval_keyword_overrides_type(self):
-        assert classify_terra_type(1, "Tempo Thursday") == "interval"
+        assert classify_terra_type(8, "Tempo Thursday") == "interval"
 
     def test_fartlek_keyword(self):
-        assert classify_terra_type(1, "Fartlek session") == "interval"
+        assert classify_terra_type(8, "Fartlek session") == "interval"
 
-    def test_unknown_type_defaults_to_easy(self):
-        assert classify_terra_type(0) == "easy"
+    def test_in_vehicle_defaults_to_cross_training(self):
+        assert classify_terra_type(0) == "cross-training"
 
-    def test_cycling_type_cross_training(self):
-        assert classify_terra_type(2) == "cross-training"
+    def test_unknown_code_with_running_name_maps_to_easy(self):
+        assert classify_terra_type(0, "Morning Run") == "easy"
+
+    def test_unknown_code_with_jog_name_maps_to_easy(self):
+        assert classify_terra_type(4, "Easy Jog") == "easy"
+
+    def test_unknown_code_no_name_maps_to_cross_training(self):
+        assert classify_terra_type(4) == "cross-training"
 
 
 SAMPLE_TERRA_ACTIVITY = {
     "start_time": "2026-03-01T08:00:00+00:00",
-    "metadata": {"type": 1, "name": "Morning Run", "provider": "GARMIN"},
+    "metadata": {"type": 8, "name": "Morning Run", "provider": "GARMIN"},
     "active_durations_data": {"activity_seconds": 2400},
     "distance_data": {
         "summary": {"distance_meters": 8000.0},

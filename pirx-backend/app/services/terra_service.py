@@ -136,7 +136,7 @@ class TerraService:
         pace = (duration / (distance / 1000)) if distance > 0 else None
 
         activity_type = classify_terra_type(
-            metadata.get("type", 0), metadata.get("name", "")
+            metadata.get("type", 0), metadata.get("name", ""),
         )
         provider = metadata.get("provider", "unknown").lower()
 
@@ -171,32 +171,55 @@ class TerraService:
         )
 
 
-def classify_terra_type(type_code: int, name: str = "") -> str:
-    """Map Terra activity type code to PIRX activity type.
+# Official Terra ActivityType enum
+# Source: https://docs.tryterra.co/reference/health-and-fitness-api/data-models#activitytype
+TERRA_RUNNING_CODES = {8, 56, 57, 58, 133}  # Running, Jogging, Running On Sand, Treadmill Running, Indoor Running
+TERRA_CROSS_TRAINING_CODES = {
+    1, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+    45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 59, 60, 61, 62, 63, 64, 65,
+    66, 67, 68, 69, 70, 71, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84,
+    85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+    102, 103, 104, 105, 106, 108, 113, 114, 115, 116, 117, 118, 119, 120,
+    122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 134, 135, 136,
+    137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
+}
+TERRA_WALK_HIKE_CODES = {7, 35}  # Walking, Hiking
 
-    Terra type codes: 0=unknown, 1=running, 2=cycling, 4=swimming,
-    8=walking, 9=hiking, 12=trail_running, 83=virtual_run, etc.
-    Garmin via Terra often sends type=0 with running info in the name.
+
+def classify_terra_type(type_code: int, name: str = "") -> str:
+    """Map Terra activity type code + name to a PIRX activity type.
+
+    Uses the official Terra ActivityType enum for deterministic mapping.
+    Name keywords override the type code to handle user-labelled workouts
+    (e.g. Garmin "Tempo Thursday" that arrives as generic Running type=8).
     """
-    running_type_codes = {1, 12, 83}
-    non_running_type_codes = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+    name_lower = name.lower()
+
     race_keywords = ["race", "competition", "parkrun"]
     interval_keywords = ["interval", "tempo", "threshold", "speed", "fartlek", "track"]
-    running_keywords = ["run", "running", "jog", "jogging"]
-
-    name_lower = name.lower()
 
     if any(kw in name_lower for kw in race_keywords):
         return "race"
     if any(kw in name_lower for kw in interval_keywords):
         return "interval"
-    if type_code in running_type_codes:
+
+    if type_code in TERRA_RUNNING_CODES:
         return "easy"
-    if any(kw in name_lower for kw in running_keywords):
-        return "easy"
-    if type_code in non_running_type_codes:
+
+    if type_code in TERRA_CROSS_TRAINING_CODES:
         return "cross-training"
-    return "easy"
+
+    if type_code in TERRA_WALK_HIKE_CODES:
+        return "cross-training"
+
+    # type_code 0 (In Vehicle), 3 (Still), 4 (Unknown), 5 (Tilting), or
+    # any future code not yet catalogued — check name for running keywords.
+    running_name_keywords = ["run", "running", "jog", "jogging"]
+    if any(kw in name_lower for kw in running_name_keywords):
+        return "easy"
+
+    return "cross-training"
 
 
 def extract_hr_zones(terra_activity: dict) -> Optional[list[float]]:

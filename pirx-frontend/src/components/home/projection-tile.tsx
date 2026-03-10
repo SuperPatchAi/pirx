@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { Timer, TrendingDown, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { TrendingDown, TrendingUp, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 interface ProjectionTileProps {
   event: string;
@@ -51,6 +50,8 @@ export function ProjectionTile({
   const [explainerData, setExplainerData] = useState<ExplainerData | null>(null);
   const [explainerLoading, setExplainerLoading] = useState(false);
 
+  const improving = improvementSeconds > 0;
+
   async function toggleExplainer() {
     if (showExplainer) {
       setShowExplainer(false);
@@ -77,46 +78,52 @@ export function ProjectionTile({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-        <CardContent className="p-6 space-y-4">
+      <Card className="border-border/60 bg-card overflow-hidden relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-green-500/6 to-transparent pointer-events-none" />
+        <CardContent className="p-5 space-y-4 relative">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Timer className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Projected Time
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {formatEventName(event)} Projection
+            </span>
+            {improving ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+                <TrendingDown className="h-3.5 w-3.5" /> Improving
               </span>
-            </div>
-            <Badge variant="secondary">{formatEventName(event)}</Badge>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-400">
+                <TrendingUp className="h-3.5 w-3.5" /> Trending Up
+              </span>
+            )}
           </div>
 
-          <div className="space-y-1">
-            <p className="text-4xl font-bold tabular-nums tracking-tight">
+          <div>
+            <p className="text-5xl font-extrabold tabular-nums tracking-tight text-green-500 leading-none">
               {projectedTime}
             </p>
-            <p className="text-sm text-muted-foreground">
-              Supported Range: {range}
-            </p>
           </div>
 
-          <div className="flex items-center gap-4 pt-2">
-            <div className="flex items-center gap-1">
-              <TrendingDown className="h-3.5 w-3.5 text-green-500" />
-              <span className="text-sm font-medium text-green-500">
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">
                 {improvementSeconds > 0 ? "-" : "+"}{Math.abs(improvementSeconds).toFixed(1)}s
-              </span>
-              <span className="text-xs text-muted-foreground">total</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">vs baseline</p>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-green-500">
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">
                 {twentyOneDayChange > 0 ? "-" : "+"}{Math.abs(twentyOneDayChange).toFixed(1)}s
-              </span>
-              <span className="text-xs text-muted-foreground">21-day</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">21-day</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">{range}</p>
+              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">range</p>
             </div>
           </div>
 
           <button
             onClick={toggleExplainer}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
           >
             {showExplainer ? (
               <ChevronUp className="h-3 w-3" />
@@ -144,7 +151,7 @@ export function ProjectionTile({
                       return (
                         <div key={d.driver_name} className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">{d.display_name}</span>
-                          <span className={`font-medium tabular-nums ${cs < 0 ? "text-green-500" : cs > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                          <span className={`font-medium tabular-nums ${cs < 0 ? "text-green-500" : cs > 0 ? "text-red-400" : "text-muted-foreground"}`}>
                             {cs < 0 ? "" : "+"}{cs.toFixed(1)}s
                           </span>
                         </div>

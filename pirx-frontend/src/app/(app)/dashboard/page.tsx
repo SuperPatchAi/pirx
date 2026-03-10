@@ -232,6 +232,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <SyncBanner lastSync={syncStatus.lastSync} syncing={syncStatus.syncing} onSyncNow={handleSyncNow} />
+
       <div data-tour="projection-tile" className="relative">
         <ProjectionTile
           event={selectedEvent}
@@ -243,13 +244,14 @@ export default function DashboardPage() {
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-3 right-3"
+          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
           onClick={handleShare}
           aria-label="Share projection"
         >
           <Share2 className="h-4 w-4" />
         </Button>
       </div>
+
       <div data-tour="event-swiper">
         <EventSwiper
           apiData={allEvents}
@@ -257,15 +259,18 @@ export default function DashboardPage() {
           onEventSelect={handleEventSelect}
         />
       </div>
+
       <div data-tour="driver-strip">
         <DriverStrip apiData={drivers} />
       </div>
+
       <QuickMetrics
         readinessScore={readiness ? (readiness.score as number) : null}
         sessionsPerWeek={metrics.sessions}
         distanceKmPerWeek={metrics.distanceKm}
         acwr={metrics.acwr}
       />
+
       <ShareModal
         open={shareOpen}
         onOpenChange={setShareOpen}

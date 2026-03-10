@@ -41,6 +41,9 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+const GREEN = "#22c55e";
+const GREEN_DIM = "rgba(34,197,94,0.15)";
+
 export function ProjectionHistoryChart({
   data,
   baselineTime,
@@ -77,18 +80,18 @@ export function ProjectionHistoryChart({
       >
         <defs>
           <linearGradient id="rangeFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.25} />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.08} />
+            <stop offset="0%" stopColor={GREEN} stopOpacity={0.2} />
+            <stop offset="100%" stopColor={GREEN} stopOpacity={0.02} />
           </linearGradient>
           <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+            <stop offset="0%" stopColor={GREEN} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={GREEN} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid
           strokeDasharray="3 3"
           stroke="hsl(var(--border))"
-          opacity={0.5}
+          opacity={0.3}
           vertical={false}
         />
         <XAxis
@@ -115,11 +118,11 @@ export function ProjectionHistoryChart({
         <Tooltip
           contentStyle={{
             backgroundColor: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
+            border: `1px solid ${GREEN_DIM}`,
             borderRadius: "8px",
             fontSize: "13px",
             padding: "8px 12px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            boxShadow: `0 4px 24px rgba(0,0,0,0.3)`,
           }}
           labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
           labelFormatter={(label) => {
@@ -144,7 +147,7 @@ export function ProjectionHistoryChart({
             y={baselineTime}
             stroke="hsl(var(--destructive))"
             strokeDasharray="6 4"
-            opacity={0.7}
+            opacity={0.5}
             label={{
               value: `Baseline ${formatTime(baselineTime)}`,
               position: "right",
@@ -158,7 +161,7 @@ export function ProjectionHistoryChart({
             type="monotone"
             dataKey="range"
             fill="url(#rangeFill)"
-            stroke="hsl(var(--primary))"
+            stroke={GREEN}
             strokeWidth={0}
             strokeOpacity={0}
             fillOpacity={1}
@@ -175,10 +178,10 @@ export function ProjectionHistoryChart({
         <Line
           type="monotone"
           dataKey="time"
-          stroke="hsl(var(--primary))"
+          stroke={GREEN}
           strokeWidth={2.5}
           dot={false}
-          activeDot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+          activeDot={{ r: 5, fill: GREEN, strokeWidth: 2, stroke: "hsl(var(--background))" }}
         />
       </ComposedChart>
     </ResponsiveContainer>

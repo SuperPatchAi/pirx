@@ -137,10 +137,10 @@ const EVENT_NAMES: Record<string, string> = {
 
 function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
   return (
-    <Card>
+    <Card className="border-border/40">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Timer className="h-4 w-4" />
+        <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
+          <Timer className="h-4 w-4 text-green-500" />
           Fitness Snapshot
         </CardTitle>
       </CardHeader>
@@ -188,33 +188,33 @@ function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
 }
 
 function PerformanceSummary({ improvement, change21d, readiness }: { improvement: number; change21d: number; readiness: number }) {
-  const impColor = improvement > 0 ? "text-green-500" : improvement < 0 ? "text-red-500" : "text-muted-foreground";
-  const changeColor = change21d > 0 ? "text-green-500" : change21d < 0 ? "text-red-500" : "text-muted-foreground";
+  const impColor = improvement > 0 ? "text-green-500" : improvement < 0 ? "text-red-400" : "text-muted-foreground";
+  const changeColor = change21d > 0 ? "text-green-500" : change21d < 0 ? "text-red-400" : "text-muted-foreground";
   return (
     <div className="grid grid-cols-3 gap-3">
-      <Card>
+      <Card className="border-border/40">
         <CardContent className="p-3 text-center">
-          <p className="text-[10px] text-muted-foreground">Total Improvement</p>
-          <p className={`text-lg font-bold tabular-nums ${impColor}`}>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Improvement</p>
+          <p className={`text-xl font-bold tabular-nums ${impColor}`}>
             {improvement > 0 ? "-" : "+"}{roundNum(Math.abs(improvement))}s
           </p>
-          <p className="text-[10px] text-muted-foreground">on 5K</p>
+          <p className="text-[10px] text-muted-foreground/60">on 5K</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card className="border-border/40">
         <CardContent className="p-3 text-center">
-          <p className="text-[10px] text-muted-foreground">21-Day Change</p>
-          <p className={`text-lg font-bold tabular-nums ${changeColor}`}>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">21-Day</p>
+          <p className={`text-xl font-bold tabular-nums ${changeColor}`}>
             {change21d > 0 ? "-" : "+"}{roundNum(Math.abs(change21d))}s
           </p>
-          <p className="text-[10px] text-muted-foreground">on 5K</p>
+          <p className="text-[10px] text-muted-foreground/60">on 5K</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card className="border-border/40">
         <CardContent className="p-3 text-center">
-          <p className="text-[10px] text-muted-foreground">Readiness</p>
-          <p className="text-lg font-bold tabular-nums">{Math.round(readiness)}</p>
-          <p className="text-[10px] text-muted-foreground">/100</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Readiness</p>
+          <p className="text-xl font-bold tabular-nums text-green-500">{Math.round(readiness)}</p>
+          <p className="text-[10px] text-muted-foreground/60">/100</p>
         </CardContent>
       </Card>
     </div>
@@ -225,7 +225,7 @@ function PerformanceSummary({ improvement, change21d, readiness }: { improvement
    Drivers tab (5C)
    ──────────────────────────────────────────────────────────── */
 
-const DRIVER_COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#8b5cf6", "#ef4444"];
+const DRIVER_COLORS = ["#22c55e", "#facc15", "#ef4444", "#f97316", "#22d3ee"];
 
 const DRIVER_DISPLAY: Record<string, string> = {
   aerobic_base: "Aerobic Base",
@@ -292,10 +292,10 @@ function DriversTab({
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="border-border/40">
         <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" /> Driver Contributions
+          <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-green-500" /> Driver Contributions
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -402,7 +402,7 @@ function DriversTab({
    Zones tab (5E)
    ──────────────────────────────────────────────────────────── */
 
-const ZONE_COLORS = ["#94a3b8", "#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
+const ZONE_COLORS = ["#94a3b8", "#22c55e", "#facc15", "#f97316", "#ef4444"];
 
 interface ZonesData {
   zones: { name: string; hr_range: string; pace_range: string; time_pct: number }[];
@@ -601,19 +601,45 @@ interface ReadinessData {
 }
 
 function getReadinessColor(score: number): string {
-  if (score >= 95) return "bg-green-500 text-white";
-  if (score >= 88) return "bg-blue-500 text-white";
-  if (score >= 75) return "bg-amber-500 text-white";
-  if (score >= 60) return "bg-gray-400 text-white";
-  return "bg-red-500 text-white";
+  if (score >= 95) return "bg-green-500/20 text-green-500 border border-green-500/30";
+  if (score >= 88) return "bg-green-500/15 text-green-400 border border-green-500/25";
+  if (score >= 75) return "bg-yellow-500/15 text-yellow-400 border border-yellow-500/25";
+  if (score >= 60) return "bg-gray-500/15 text-gray-400 border border-gray-500/25";
+  return "bg-red-500/15 text-red-400 border border-red-500/25";
 }
 
 function getReadinessRingColor(score: number): string {
-  if (score >= 95) return "text-green-500";
-  if (score >= 88) return "text-blue-500";
-  if (score >= 75) return "text-amber-500";
-  if (score >= 60) return "text-gray-400";
-  return "text-red-500";
+  if (score >= 75) return "text-green-500";
+  if (score >= 60) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function ReadinessRing({ score }: { score: number }) {
+  const pct = Math.min(score, 100);
+  const r = 60;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference - (pct / 100) * circumference;
+  const ringColor = score >= 75 ? "#22c55e" : score >= 60 ? "#facc15" : "#ef4444";
+
+  return (
+    <div className="relative w-36 h-36">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r={r} strokeWidth="8" fill="none" className="stroke-secondary/50" />
+        <circle
+          cx="70" cy="70" r={r} strokeWidth="8" fill="none"
+          stroke={ringColor}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="transition-all duration-700"
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-3xl font-bold tabular-nums ${getReadinessRingColor(score)}`}>{Math.round(score)}</span>
+        <span className="text-[10px] text-muted-foreground">/100</span>
+      </div>
+    </div>
+  );
 }
 
 function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: boolean }) {
@@ -622,20 +648,18 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="border-border/40">
         <CardContent className="p-6 flex flex-col items-center gap-3">
-          <div className={`text-5xl font-bold tabular-nums ${getReadinessRingColor(data.score)}`}>
-            {data.score}
-          </div>
+          <ReadinessRing score={data.score} />
           <Badge className={getReadinessColor(data.score)}>{data.label}</Badge>
-          <p className="text-xs text-muted-foreground">Event Readiness Score</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Event Readiness Score</p>
         </CardContent>
       </Card>
 
       {data.components && data.components.length > 0 && (
-        <Card>
+        <Card className="border-border/40">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Component Breakdown</CardTitle>
+            <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">Component Breakdown</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.components.map((c) => (
@@ -644,9 +668,9 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
                   <span className="text-muted-foreground">{c.name}</span>
                   <span className="font-medium tabular-nums">{c.value}</span>
                 </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-2 bg-secondary/50 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-primary transition-all"
+                    className="h-full rounded-full bg-green-500 transition-all duration-500"
                     style={{ width: `${Math.min(c.value, 100)}%` }}
                   />
                 </div>
@@ -1354,12 +1378,17 @@ export default function PerformancePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Performance</h1>
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">8-Week Overview</p>
+        <h1 className="text-2xl font-bold tracking-tight">
+          Performance <span className="text-green-500">Trends</span>
+        </h1>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full">
-          <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
-          <TabsTrigger value="analysis" className="flex-1">Analysis</TabsTrigger>
+        <TabsList className="w-full bg-secondary/50">
+          <TabsTrigger value="overview" className="flex-1 data-[state=active]:bg-green-500/15 data-[state=active]:text-green-500">Overview</TabsTrigger>
+          <TabsTrigger value="analysis" className="flex-1 data-[state=active]:bg-green-500/15 data-[state=active]:text-green-500">Analysis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -1370,10 +1399,10 @@ export default function PerformancePage() {
           />
           <FitnessSnapshotTable snapshot={snapshot} />
 
-          <Card>
+          <Card className="border-border/40">
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> Projection Trend
+              <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-green-500" /> 5K Projection Over Time
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1399,11 +1428,11 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-border/40">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-muted-foreground" />
+                  <Target className="h-4 w-4 text-green-500" />
                   <div>
                     <p className="text-sm font-medium">Baseline Race</p>
                     <p className="text-xs text-muted-foreground">
@@ -1426,11 +1455,11 @@ export default function PerformancePage() {
               open={expandedSection === key}
               onOpenChange={(open) => handleSectionToggle(key, open)}
             >
-              <Card>
+              <Card className="border-border/40">
                 <CollapsibleTrigger className="w-full text-left">
                   <CardContent className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <Icon className={`h-4 w-4 ${expandedSection === key ? "text-green-500" : "text-muted-foreground"}`} />
                       <p className="text-sm font-medium">{label}</p>
                     </div>
                     <ChevronDown
@@ -1441,7 +1470,7 @@ export default function PerformancePage() {
                   </CardContent>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <div className="px-4 pb-4 border-t pt-4">
+                  <div className="px-4 pb-4 border-t border-border/40 pt-4">
                     {renderAnalysisContent(key)}
                   </div>
                 </CollapsibleContent>

@@ -150,7 +150,8 @@ export default function CalendarPage() {
         `/activities?from=${fromStr}&to=${toStr}`
       )) as ActivitiesResponse;
       setActivities(data.activities ?? []);
-    } catch {
+    } catch (err) {
+      console.warn("Calendar: failed to load activities", err);
       setActivities([]);
     } finally {
       setLoading(false);
@@ -316,7 +317,7 @@ export default function CalendarPage() {
                       {formatActivityType(a.activity_type)}
                     </span>
                     <span className="text-muted-foreground">
-                      {(a.distance_meters ?? 0) / 1000} km
+                      {((a.distance_meters ?? 0) / 1000).toFixed(1)} km
                     </span>
                     <span className="text-muted-foreground">
                       {formatDuration(a.duration_seconds)}

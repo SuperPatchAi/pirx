@@ -151,12 +151,23 @@ class ProjectionEngine:
         raw_projected = baseline_time_s - total_improvement
         raw_projected = max(raw_projected, 60.0)
 
-        # Step 5: Apply volatility dampening if previous state exists
+        # Step 5: Apply volatility dampening if previous state exists.
+        # Skip dampening when the baseline has shifted significantly (>5%),
+        # which indicates a recalibration rather than incremental change.
         if previous_state and previous_state.projected_time_seconds > 0:
-            projected = self._apply_dampening(
-                raw_projected, previous_state.projected_time_seconds
+            prev_baseline = previous_state.baseline_time_seconds or 0
+            baseline_shift_pct = (
+                abs(baseline_time_s - prev_baseline) / prev_baseline
+                if prev_baseline > 0 else 1.0
             )
-            volatility = abs(raw_projected - previous_state.projected_time_seconds)
+            if baseline_shift_pct > 0.05:
+                projected = raw_projected
+                volatility = 0.0
+            else:
+                projected = self._apply_dampening(
+                    raw_projected, previous_state.projected_time_seconds
+                )
+                volatility = abs(raw_projected - previous_state.projected_time_seconds)
         else:
             projected = raw_projected
             volatility = 0.0

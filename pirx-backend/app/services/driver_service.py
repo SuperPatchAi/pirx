@@ -25,6 +25,10 @@ class DriverService:
     ) -> tuple:
         """Compute projection + drivers and store to DB.
 
+        Only stores a new row when the projection has shifted by >= 2 seconds
+        from the previous value, preventing the dampening feedback loop that
+        causes projections to drift on repeated recomputes of unchanged data.
+
         Returns (ProjectionState, list[DriverState])
         """
         projection_state, driver_states = self.engine.compute_projection(
@@ -43,6 +47,13 @@ class DriverService:
                 f"{sum(d.contribution_seconds for d in driver_states)}, "
                 f"expected {projection_state.total_improvement_seconds}"
             )
+
+        if not self.engine.check_structural_shift(projection_state, previous_projection):
+            logger.info(
+                "Projection for user %s event %s unchanged (<2s shift), skipping storage",
+                user_id, event,
+            )
+            return projection_state, driver_states
 
         twenty_one_day_change = 0.0
         try:

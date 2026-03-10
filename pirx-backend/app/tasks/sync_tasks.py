@@ -279,7 +279,13 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                             },
                         )
                         if resp.status_code == 200:
-                            activities_data = resp.json().get("data", [])
+                            resp_json = resp.json()
+                            activities_data = resp_json.get("data", [])
+                            logger.warning(
+                                "Terra backfill response: user=%s terra_user=%s activities=%d keys=%s",
+                                user_id, terra_user_id, len(activities_data),
+                                list(resp_json.keys()),
+                            )
                             for raw_act in activities_data:
                                 imported += 1
                                 try:

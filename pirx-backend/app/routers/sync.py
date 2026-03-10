@@ -355,3 +355,45 @@ async def trigger_backfill(user: dict = Depends(get_current_user)):
         backfill_history.delay(user["user_id"], provider)
         providers_queued.append(provider)
     return {"message": "Backfill queued", "user_id": user["user_id"], "providers": providers_queued}
+
+
+@router.post("/recompute")
+async def recompute_pipeline(user: dict = Depends(get_current_user)):
+    """Run the ML pipeline synchronously on existing activities (no Celery required)."""
+    from app.services.cleaning_service import CleaningService
+    from app.services.feature_service import FeatureService
+    from app.services.projection_service import ProjectionService
+    from app.models.activities import NormalizedActivity
+
+    user_id = user["user_id"]
+    db = SupabaseService()
+    raw = db.get_recent_activities(user_id, days=90)
+    if not raw:
+        return {"status": "no_activities", "user_id": user_id}
+
+    activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+
+    for a in activities:
+        if a.timestamp and a.timestamp.tzinfo:
+            a.timestamp = a.timestamp.replace(tzinfo=None)
+
+    avg_pace = CleaningService.compute_runner_avg_pace(activities)
+    cleaned = CleaningService.clean_batch(activities, avg_pace)
+
+    if not cleaned:
+        return {"status": "no_valid_activities", "user_id": user_id, "raw_count": len(raw)}
+
+    features = FeatureService.compute_all_features(cleaned, user_id=user_id)
+    features_computed = sum(1 for v in features.values() if v is not None)
+
+    svc = ProjectionService()
+    projection_results = svc.recompute_all_events(user_id, features)
+
+    return {
+        "status": "completed",
+        "user_id": user_id,
+        "activities_loaded": len(raw),
+        "activities_cleaned": len(cleaned),
+        "features_computed": features_computed,
+        "projections": projection_results,
+    }

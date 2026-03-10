@@ -64,7 +64,7 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     else:
         from app.services.supabase_client import SupabaseService
         db = SupabaseService()
-        raw = db.get_recent_activities(user_id, days=90)
+        raw = db.get_recent_activities(user_id, days=180)
         activities = [NormalizedActivity.from_db_dict(a) for a in raw] if raw else []
 
     if not activities:

@@ -117,7 +117,7 @@ async def explain_driver(
         from app.models.activities import NormalizedActivity
 
         db = SupabaseService()
-        activities_raw = db.get_recent_activities(user["user_id"], days=90)
+        activities_raw = db.get_recent_activities(user["user_id"], days=180)
         if activities_raw:
             from app.services.feature_service import FeatureService
             activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]

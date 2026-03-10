@@ -263,7 +263,7 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                     return {"status": "error", "user_id": user_id, "error": f"No terra_user_id for {provider}"}
 
                 end_date = datetime.now(timezone.utc)
-                start_date = end_date - timedelta(days=90)
+                start_date = end_date - timedelta(days=180)
                 try:
                     with httpx.Client() as http:
                         resp = http.get(

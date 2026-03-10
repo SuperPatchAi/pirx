@@ -30,7 +30,7 @@ def _load_features_history(user_id: str) -> list[dict]:
 
     try:
         db = SupabaseService()
-        raw = db.get_recent_activities(user_id, days=90)
+        raw = db.get_recent_activities(user_id, days=180)
         if not raw or len(raw) < 5:
             return []
 
@@ -184,7 +184,7 @@ def _build_intensity_level(level: str, baseline_sec: float, current_sec: float) 
 async def get_running_economy(user: dict = Depends(get_current_user)):
     """Get running economy metrics via matched HR band analysis."""
     db = SupabaseService()
-    activities = db.get_recent_activities(user["user_id"], days=90)
+    activities = db.get_recent_activities(user["user_id"], days=180)
 
     HR_LOW, HR_HIGH = 145, 155
     matched_recent: list[float] = []

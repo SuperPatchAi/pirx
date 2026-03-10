@@ -117,7 +117,7 @@ def get_readiness(user_id: str) -> dict:
     from app.models.activities import NormalizedActivity
 
     db = SupabaseService()
-    activities_raw = db.get_recent_activities(user_id, days=90)
+    activities_raw = db.get_recent_activities(user_id, days=180)
 
     if activities_raw:
         activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]

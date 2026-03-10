@@ -370,7 +370,7 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
 
     try:
         db = SupabaseService()
-        raw = db.get_recent_activities(user_id, days=90)
+        raw = db.get_recent_activities(user_id, days=180)
         logger.warning("recompute_pipeline: loaded %d raw activities", len(raw) if raw else 0)
 
         if not raw:

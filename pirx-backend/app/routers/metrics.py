@@ -25,7 +25,7 @@ async def get_weekly_metrics(user: dict = Depends(get_current_user)):
     try:
         from app.models.activities import NormalizedActivity
         from app.services.feature_service import FeatureService
-        all_activities_raw = db.get_recent_activities(user["user_id"], days=90)
+        all_activities_raw = db.get_recent_activities(user["user_id"], days=180)
         if all_activities_raw:
             all_activities = [NormalizedActivity.from_db_dict(a) for a in all_activities_raw]
             features = FeatureService.compute_all_features(all_activities)

@@ -112,7 +112,7 @@ class ProjectionService:
         P10 pace, adjusted median) instead of naive median training pace.
         """
         try:
-            activities = self.db.get_recent_activities(user_id, days=90)
+            activities = self.db.get_recent_activities(user_id, days=180)
             return estimate_5k_baseline(activities)
         except Exception:
             logger.warning("Failed to estimate baseline for user %s, using default", user_id)

@@ -23,7 +23,7 @@ async def get_readiness(
     user: dict = Depends(get_current_user),
 ):
     db = SupabaseService()
-    activities_raw = db.get_recent_activities(user["user_id"], days=90)
+    activities_raw = db.get_recent_activities(user["user_id"], days=180)
 
     if activities_raw:
         activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]

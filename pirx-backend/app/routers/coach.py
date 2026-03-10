@@ -185,7 +185,7 @@ async def list_athletes(user: dict = Depends(get_current_user)):
             from app.models.activities import NormalizedActivity
             from app.services.feature_service import FeatureService
 
-            activities_raw = db.get_recent_activities(athlete_id, days=90)
+            activities_raw = db.get_recent_activities(athlete_id, days=180)
             if activities_raw:
                 activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
                 features = FeatureService.compute_all_features(activities)
@@ -280,7 +280,7 @@ async def get_athlete_readiness(
         from app.models.activities import NormalizedActivity
         from app.services.feature_service import FeatureService
 
-        activities_raw = db.get_recent_activities(athlete_id, days=90)
+        activities_raw = db.get_recent_activities(athlete_id, days=180)
         if not activities_raw:
             return {"score": 0, "label": "Insufficient Data", "factors": []}
 

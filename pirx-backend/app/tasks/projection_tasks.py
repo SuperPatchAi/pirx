@@ -17,7 +17,7 @@ def recompute_projection(user_id: str, event: str = "5000") -> dict:
 
         svc = ProjectionService()
         db = SupabaseService()
-        activities_raw = db.get_recent_activities(user_id, days=90)
+        activities_raw = db.get_recent_activities(user_id, days=180)
 
         if not activities_raw:
             return {"status": "no_data", "user_id": user_id, "event": event}

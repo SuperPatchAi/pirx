@@ -103,72 +103,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const { apiFetch } = await import("@/lib/api");
-        const [projData, driversData, readinessData, allEventsData, weeklyData, syncData] = await Promise.allSettled([
-          apiFetch(`/projection?event=${selectedEvent}`),
-          apiFetch("/drivers"),
-          apiFetch("/readiness"),
-          apiFetch("/projection/all"),
-          apiFetch("/metrics/weekly"),
-          apiFetch("/sync/status"),
-        ]);
-
-        if (projData.status === "fulfilled") setProjection(projData.value as Record<string, unknown>);
-        if (driversData.status === "fulfilled") {
-          const res = driversData.value as { drivers?: Array<{ driver_name?: string; display_name?: string; contribution_seconds?: number; trend?: string; score?: number }> };
-          const list = res?.drivers ?? [];
-          type Trend = "improving" | "stable" | "declining";
-          const toTrend = (s: string | undefined): Trend => (s === "improving" || s === "declining" ? s : "stable");
-          setDrivers(
-            list.map((d) => ({
-              name: d.driver_name ?? "",
-              displayName: d.display_name ?? "",
-              contributionSeconds: d.contribution_seconds ?? 0,
-              trend: toTrend(d.trend),
-              score: d.score ?? 0,
-            }))
-          );
-        }
-        if (readinessData.status === "fulfilled") setReadiness(readinessData.value as Record<string, unknown>);
-        if (allEventsData.status === "fulfilled") {
-          const evts = allEventsData.value as { projections?: Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> };
-          const list = evts?.projections ?? (Array.isArray(allEventsData.value) ? allEventsData.value as Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> : []);
-          if (list.length > 0) {
-            setAllEvents(
-              list.map((p) => ({
-                event: String(p.event ?? ""),
-                displayName: p.display_name ?? formatEventLabel(String(p.event ?? "")),
-                projectedTime: formatTime(p.projected_time_seconds ?? 0),
-                change: p.twenty_one_day_change != null ? `${p.twenty_one_day_change > 0 ? "+" : ""}${p.twenty_one_day_change}s` : "—",
-              }))
-            );
-          }
-        }
-        if (weeklyData.status === "fulfilled") {
-          const w = weeklyData.value as { sessions_per_week?: number; distance_km_per_week?: number; acwr?: number };
-          setMetrics({
-            sessions: w.sessions_per_week ?? null,
-            distanceKm: w.distance_km_per_week ?? null,
-            acwr: w.acwr ?? null,
-          });
-        }
-        if (syncData.status === "fulfilled") {
-          const s = syncData.value as { connections?: Array<{ last_sync?: string }> };
-          const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
-          setSyncStatus((prev) => ({ ...prev, lastSync: latest }));
-        }
-      } catch {
-        // keep empty defaults on failure
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleEventSelect = useCallback(
     (event: string) => {
       setSelectedEvent(event);
@@ -177,18 +111,83 @@ export default function DashboardPage() {
     [fetchProjection]
   );
 
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      const [projData, driversData, readinessData, allEventsData, weeklyData, syncData] = await Promise.allSettled([
+        apiFetch(`/projection?event=${selectedEvent}`),
+        apiFetch("/drivers"),
+        apiFetch("/readiness"),
+        apiFetch("/projection/all"),
+        apiFetch("/metrics/weekly"),
+        apiFetch("/sync/status"),
+      ]);
+
+      if (projData.status === "fulfilled") setProjection(projData.value as Record<string, unknown>);
+      if (driversData.status === "fulfilled") {
+        const res = driversData.value as { drivers?: Array<{ driver_name?: string; display_name?: string; contribution_seconds?: number; trend?: string; score?: number }> };
+        const list = res?.drivers ?? [];
+        type Trend = "improving" | "stable" | "declining";
+        const toTrend = (s: string | undefined): Trend => (s === "improving" || s === "declining" ? s : "stable");
+        setDrivers(
+          list.map((d) => ({
+            name: d.driver_name ?? "",
+            displayName: d.display_name ?? "",
+            contributionSeconds: d.contribution_seconds ?? 0,
+            trend: toTrend(d.trend),
+            score: d.score ?? 0,
+          }))
+        );
+      }
+      if (readinessData.status === "fulfilled") setReadiness(readinessData.value as Record<string, unknown>);
+      if (allEventsData.status === "fulfilled") {
+        const evts = allEventsData.value as { projections?: Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> };
+        const list = evts?.projections ?? (Array.isArray(allEventsData.value) ? allEventsData.value as Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> : []);
+        if (list.length > 0) {
+          setAllEvents(
+            list.map((p) => ({
+              event: String(p.event ?? ""),
+              displayName: p.display_name ?? formatEventLabel(String(p.event ?? "")),
+              projectedTime: formatTime(p.projected_time_seconds ?? 0),
+              change: p.twenty_one_day_change != null ? `${p.twenty_one_day_change > 0 ? "+" : ""}${p.twenty_one_day_change}s` : "—",
+            }))
+          );
+        }
+      }
+      if (weeklyData.status === "fulfilled") {
+        const w = weeklyData.value as { sessions_per_week?: number; distance_km_per_week?: number; acwr?: number };
+        setMetrics({
+          sessions: w.sessions_per_week ?? null,
+          distanceKm: w.distance_km_per_week ?? null,
+          acwr: w.acwr ?? null,
+        });
+      }
+      if (syncData.status === "fulfilled") {
+        const s = syncData.value as { connections?: Array<{ last_sync?: string }> };
+        const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
+        setSyncStatus((prev) => ({ ...prev, lastSync: latest }));
+      }
+    } catch {
+      // keep existing data on failure
+    }
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    loadDashboardData().finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSyncNow = useCallback(async () => {
     setSyncStatus((prev) => ({ ...prev, syncing: true }));
     try {
       const { apiFetch } = await import("@/lib/api");
       await apiFetch("/sync/trigger", { method: "POST" });
-      const s = await apiFetch("/sync/status") as { connections?: Array<{ last_sync?: string }> };
-      const latest = s.connections?.map(c => c.last_sync).filter(Boolean).sort().pop() ?? null;
-      setSyncStatus({ lastSync: latest, syncing: false });
+      await apiFetch("/sync/recompute", { method: "POST" });
+      await loadDashboardData();
+      setSyncStatus((prev) => ({ ...prev, syncing: false }));
     } catch {
       setSyncStatus((prev) => ({ ...prev, syncing: false }));
     }
-  }, []);
+  }, [loadDashboardData]);
 
   const handleShare = useCallback(async () => {
     try {

@@ -68,7 +68,11 @@ function formatTime(seconds: number): string {
 
 function formatDelta(seconds: number): string {
   const sign = seconds >= 0 ? "+" : "";
-  return `${sign}${seconds.toFixed(1)}s`;
+  return `${sign}${Number(seconds).toFixed(1)}s`;
+}
+
+function roundNum(n: number, decimals = 1): string {
+  return Number(n).toFixed(decimals);
 }
 
 function NoData({ message }: { message?: string }) {
@@ -166,7 +170,9 @@ function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
                     <span className="text-xs text-muted-foreground tabular-nums">{s.rangeLow} – {s.rangeHigh}</span>
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={`text-sm font-medium tabular-nums ${color}`}>-{s.improvement}s</span>
+                    <span className={`text-sm font-medium tabular-nums ${color}`}>
+                      {s.improvement > 0 ? "-" : "+"}{roundNum(Math.abs(s.improvement))}s
+                    </span>
                   </TableCell>
                   <TableCell className="text-center">
                     <TrendIcon className={`h-4 w-4 mx-auto ${color}`} />
@@ -182,26 +188,32 @@ function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
 }
 
 function PerformanceSummary({ improvement, change21d, readiness }: { improvement: number; change21d: number; readiness: number }) {
+  const impColor = improvement > 0 ? "text-green-500" : improvement < 0 ? "text-red-500" : "text-muted-foreground";
+  const changeColor = change21d > 0 ? "text-green-500" : change21d < 0 ? "text-red-500" : "text-muted-foreground";
   return (
     <div className="grid grid-cols-3 gap-3">
       <Card>
         <CardContent className="p-3 text-center">
           <p className="text-[10px] text-muted-foreground">Total Improvement</p>
-          <p className="text-lg font-bold tabular-nums text-green-500">-{improvement}s</p>
+          <p className={`text-lg font-bold tabular-nums ${impColor}`}>
+            {improvement > 0 ? "-" : "+"}{roundNum(Math.abs(improvement))}s
+          </p>
           <p className="text-[10px] text-muted-foreground">on 5K</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="p-3 text-center">
           <p className="text-[10px] text-muted-foreground">21-Day Change</p>
-          <p className="text-lg font-bold tabular-nums text-green-500">-{change21d}s</p>
+          <p className={`text-lg font-bold tabular-nums ${changeColor}`}>
+            {change21d > 0 ? "-" : "+"}{roundNum(Math.abs(change21d))}s
+          </p>
           <p className="text-[10px] text-muted-foreground">on 5K</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="p-3 text-center">
           <p className="text-[10px] text-muted-foreground">Readiness</p>
-          <p className="text-lg font-bold tabular-nums">{readiness}</p>
+          <p className="text-lg font-bold tabular-nums">{Math.round(readiness)}</p>
           <p className="text-[10px] text-muted-foreground">/100</p>
         </CardContent>
       </Card>
@@ -215,8 +227,21 @@ function PerformanceSummary({ improvement, change21d, readiness }: { improvement
 
 const DRIVER_COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#8b5cf6", "#ef4444"];
 
+const DRIVER_DISPLAY: Record<string, string> = {
+  aerobic_base: "Aerobic Base",
+  threshold_density: "Threshold Density",
+  speed_exposure: "Speed Exposure",
+  running_economy: "Running Economy",
+  load_consistency: "Load Consistency",
+};
+
+function driverLabel(name: string): string {
+  return DRIVER_DISPLAY[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 interface Driver {
   name: string;
+  display_name?: string;
   contribution_seconds: number;
   score: number;
 }
@@ -257,11 +282,12 @@ function DriversTab({
   if (!drivers || drivers.length === 0) return <NoData message="Driver data not yet available" />;
 
   const chartData = drivers.map((d, i) => ({
-    name: d.name,
-    value: Math.abs(d.contribution_seconds),
+    name: d.display_name ?? driverLabel(d.name),
+    value: Math.abs(Number(d.contribution_seconds) || 0),
     fill: DRIVER_COLORS[i % DRIVER_COLORS.length],
     score: d.score,
     raw: d.contribution_seconds,
+    key: d.name,
   }));
 
   return (
@@ -273,15 +299,39 @@ function DriversTab({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={drivers.length * 48 + 20}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 80, bottom: 0 }}>
-              <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}s`} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }}
-                formatter={(value: number | undefined) => [value != null ? `${value}s` : "", "Contribution"]}
+          <ResponsiveContainer width="100%" height={drivers.length * 52 + 24}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 40, left: 10, bottom: 0 }}>
+              <XAxis
+                type="number"
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tickFormatter={(v: number) => `${v.toFixed(1)}s`}
+                axisLine={false}
+                tickLine={false}
               />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              <YAxis
+                type="category"
+                dataKey="name"
+                tick={{ fontSize: 12, fill: "hsl(var(--foreground))", fontWeight: 500 }}
+                width={130}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  padding: "8px 12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                }}
+                formatter={(value: number | undefined, _name: string | undefined, props: { payload?: { key?: string; score?: number } }) => {
+                  const score = props?.payload?.score ?? 0;
+                  return [value != null ? `${value.toFixed(1)}s (score: ${score})` : "", "Contribution"];
+                }}
+                labelFormatter={(label) => String(label)}
+              />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={entry.fill} />
                 ))}
@@ -306,8 +356,8 @@ function DriversTab({
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: DRIVER_COLORS[i % DRIVER_COLORS.length] }} />
                   <div>
-                    <p className="text-sm font-medium">{driver.name}</p>
-                    <p className="text-xs text-muted-foreground">Score: {driver.score} | {formatDelta(driver.contribution_seconds)}</p>
+                    <p className="text-sm font-medium">{driver.display_name ?? driverLabel(driver.name)}</p>
+                    <p className="text-xs text-muted-foreground">Score: {Math.round(driver.score)} | {formatDelta(driver.contribution_seconds)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1176,7 +1226,16 @@ export default function PerformancePage() {
         drivers: () => {
           setDriversLoading(true);
           apiFetch("/drivers")
-            .then((d) => setDriversData(Array.isArray(d) ? d : d.drivers ?? []))
+            .then((d) => {
+              const raw = Array.isArray(d) ? d : d.drivers ?? [];
+              const mapped: Driver[] = raw.map((item: Record<string, unknown>) => ({
+                name: (item.driver_name ?? item.name ?? "") as string,
+                display_name: (item.display_name ?? "") as string,
+                contribution_seconds: Number(item.contribution_seconds ?? 0),
+                score: Number(item.score ?? 0),
+              }));
+              setDriversData(mapped);
+            })
             .catch(() => {})
             .finally(() => setDriversLoading(false));
         },
@@ -1197,7 +1256,20 @@ export default function PerformancePage() {
         readiness: () => {
           setReadinessLoading(true);
           apiFetch("/readiness")
-            .then(setReadinessData)
+            .then((d) => {
+              let components: { name: string; value: number }[] = [];
+              if (d.components) {
+                if (Array.isArray(d.components)) {
+                  components = d.components;
+                } else {
+                  components = Object.entries(d.components).map(([k, v]) => ({
+                    name: k.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    value: Number(v) || 0,
+                  }));
+                }
+              }
+              setReadinessData({ score: d.score ?? 0, label: d.label ?? "Unknown", components });
+            })
             .catch(() => {})
             .finally(() => setReadinessLoading(false));
         },

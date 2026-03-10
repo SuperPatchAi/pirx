@@ -102,13 +102,13 @@ export function ProjectionTile({
             <div className="flex items-center gap-1">
               <TrendingDown className="h-3.5 w-3.5 text-green-500" />
               <span className="text-sm font-medium text-green-500">
-                {improvementSeconds > 0 ? "-" : "+"}{Math.abs(improvementSeconds)}s
+                {improvementSeconds > 0 ? "-" : "+"}{Math.abs(improvementSeconds).toFixed(1)}s
               </span>
               <span className="text-xs text-muted-foreground">total</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-sm font-medium text-green-500">
-                {twentyOneDayChange > 0 ? "-" : "+"}{Math.abs(twentyOneDayChange)}s
+                {twentyOneDayChange > 0 ? "-" : "+"}{Math.abs(twentyOneDayChange).toFixed(1)}s
               </span>
               <span className="text-xs text-muted-foreground">21-day</span>
             </div>
@@ -139,14 +139,17 @@ export function ProjectionTile({
                     {explainerData.narrative}
                   </p>
                   <div className="space-y-1.5">
-                    {explainerData.drivers.map((d) => (
-                      <div key={d.driver_name} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">{d.display_name}</span>
-                        <span className={`font-medium tabular-nums ${d.contribution_seconds < 0 ? "text-green-500" : d.contribution_seconds > 0 ? "text-red-500" : "text-muted-foreground"}`}>
-                          {d.contribution_seconds < 0 ? "" : "+"}{d.contribution_seconds}s
-                        </span>
-                      </div>
-                    ))}
+                    {explainerData.drivers.map((d) => {
+                      const cs = Number(d.contribution_seconds) || 0;
+                      return (
+                        <div key={d.driver_name} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">{d.display_name}</span>
+                          <span className={`font-medium tabular-nums ${cs < 0 ? "text-green-500" : cs > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                            {cs < 0 ? "" : "+"}{cs.toFixed(1)}s
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               ) : (

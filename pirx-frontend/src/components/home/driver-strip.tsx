@@ -65,7 +65,7 @@ export function DriverStrip({ apiData }: DriverStripProps) {
                     {d.displayName}
                   </p>
                   <p className="text-sm font-bold tabular-nums">
-                    -{d.contributionSeconds}s
+                    -{Math.abs(Number(d.contributionSeconds) || 0).toFixed(1)}s
                   </p>
                   <TrendIcon className={`h-3 w-3 mx-auto ${color}`} />
                 </CardContent>

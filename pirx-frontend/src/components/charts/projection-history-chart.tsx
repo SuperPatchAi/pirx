@@ -30,6 +30,12 @@ interface ProjectionHistoryChartProps {
 }
 
 function formatTime(seconds: number): string {
+  if (seconds >= 3600) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.round(seconds % 60);
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
   const mins = Math.floor(seconds / 60);
   const secs = Math.round(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -42,7 +48,7 @@ export function ProjectionHistoryChart({
 }: ProjectionHistoryChartProps) {
   if (data.length === 0) {
     return (
-      <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground">
+      <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
         No projection history yet
       </div>
     );
@@ -60,61 +66,66 @@ export function ProjectionHistoryChart({
     ...data.map((d) => d.time),
     ...(rangeData?.flatMap((r) => [r.low, r.high]) ?? []),
   ];
-  const minTime = Math.min(...allValues) - 10;
-  const maxTime = Math.max(...allValues) + 10;
+  const minTime = Math.min(...allValues) - 15;
+  const maxTime = Math.max(...allValues) + 15;
 
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height={280}>
       <ComposedChart
         data={merged}
-        margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+        margin={{ top: 10, right: 15, left: 5, bottom: 10 }}
       >
         <defs>
           <linearGradient id="rangeFill" x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="0%"
-              stopColor="hsl(var(--primary))"
-              stopOpacity={0.15}
-            />
-            <stop
-              offset="100%"
-              stopColor="hsl(var(--primary))"
-              stopOpacity={0.05}
-            />
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.25} />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.08} />
+          </linearGradient>
+          <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid
           strokeDasharray="3 3"
           stroke="hsl(var(--border))"
-          opacity={0.3}
+          opacity={0.5}
+          vertical={false}
         />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
           tickLine={false}
-          axisLine={false}
+          axisLine={{ stroke: "hsl(var(--border))" }}
           tickFormatter={(d) => {
             const date = new Date(d);
-            return `${date.getMonth() + 1}/${date.getDate()}`;
+            return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
           }}
+          interval="preserveStartEnd"
+          minTickGap={40}
         />
         <YAxis
           domain={[minTime, maxTime]}
-          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
           tickLine={false}
           axisLine={false}
           tickFormatter={formatTime}
           reversed
-          width={45}
+          width={50}
         />
         <Tooltip
           contentStyle={{
             backgroundColor: "hsl(var(--card))",
             border: "1px solid hsl(var(--border))",
             borderRadius: "8px",
-            fontSize: "12px",
+            fontSize: "13px",
+            padding: "8px 12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
           }}
-          labelStyle={{ color: "hsl(var(--muted-foreground))" }}
+          labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
+          labelFormatter={(label) => {
+            const date = new Date(label);
+            return date.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+          }}
           formatter={(value: number | number[] | undefined, name: string | undefined) => {
             if (name === "range" && Array.isArray(value)) {
               return [
@@ -132,8 +143,14 @@ export function ProjectionHistoryChart({
           <ReferenceLine
             y={baselineTime}
             stroke="hsl(var(--destructive))"
-            strokeDasharray="5 5"
-            opacity={0.5}
+            strokeDasharray="6 4"
+            opacity={0.7}
+            label={{
+              value: `Baseline ${formatTime(baselineTime)}`,
+              position: "right",
+              fill: "hsl(var(--destructive))",
+              fontSize: 10,
+            }}
           />
         )}
         {rangeData && rangeData.length > 0 && (
@@ -149,13 +166,19 @@ export function ProjectionHistoryChart({
             isAnimationActive={false}
           />
         )}
+        <Area
+          type="monotone"
+          dataKey="time"
+          fill="url(#lineFill)"
+          stroke="none"
+        />
         <Line
           type="monotone"
           dataKey="time"
           stroke="hsl(var(--primary))"
-          strokeWidth={2}
+          strokeWidth={2.5}
           dot={false}
-          activeDot={{ r: 4, fill: "hsl(var(--primary))" }}
+          activeDot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 2, stroke: "hsl(var(--background))" }}
         />
       </ComposedChart>
     </ResponsiveContainer>

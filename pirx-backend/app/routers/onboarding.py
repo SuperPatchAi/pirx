@@ -201,7 +201,7 @@ async def generate_projection(
             "confidence_score": 0.5,
             "volatility_score": 0.2,
             "volatility": 0.2,
-            "baseline_seconds": round(midpoint, 2),
+            "baseline_seconds": round(baseline_seconds, 2),
             "status": "Holding",
             "model_type": "lmc",
             "computed_at": now,
@@ -234,6 +234,13 @@ async def generate_projection(
         ).eq("user_id", user_id).execute()
     except Exception:
         logger.exception("Failed to mark onboarding complete for user %s", user_id)
+
+    try:
+        from app.tasks.feature_engineering import compute_features
+        compute_features.delay(user_id)
+        logger.info("Triggered post-onboarding ML pipeline for user %s", user_id)
+    except Exception:
+        logger.warning("Failed to trigger post-onboarding pipeline for user %s", user_id)
 
     primary = projections.get(body.primary_event, projections.get(baseline_event))
 

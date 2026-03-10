@@ -44,6 +44,7 @@ import {
   FlaskConical,
   Shield,
   Users,
+  Pencil,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -131,6 +132,159 @@ function formatSyncTime(iso: string | null): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function BaselineSection({
+  baseline,
+  baselineLoading,
+  onUpdated,
+}: {
+  baseline: Baseline | null;
+  baselineLoading: boolean;
+  onUpdated: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editEvent, setEditEvent] = useState("5000");
+  const [editMin, setEditMin] = useState("20");
+  const [editSec, setEditSec] = useState("00");
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    if (baseline) {
+      setEditEvent(baseline.event);
+      const m = Math.floor(baseline.time_seconds / 60);
+      const s = Math.floor(baseline.time_seconds % 60);
+      setEditMin(String(m));
+      setEditSec(String(s).padStart(2, "0"));
+    }
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    const timeSec = parseInt(editMin) * 60 + parseInt(editSec);
+    if (timeSec <= 0) return;
+    setSaving(true);
+    try {
+      await apiFetch("/account/baseline", {
+        method: "PUT",
+        body: JSON.stringify({
+          event: editEvent,
+          time_seconds: timeSec,
+          source: "manual",
+        }),
+      });
+      toast.success("Baseline updated");
+      setEditing(false);
+      onUpdated();
+    } catch {
+      toast.error("Failed to update baseline");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+        <Timer className="h-4 w-4" />
+        Baseline Race
+      </h2>
+      <Card>
+        <CardContent className="p-4">
+          {baselineLoading ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : editing ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Event</Label>
+                <select
+                  value={editEvent}
+                  onChange={(e) => setEditEvent(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {EVENT_OPTIONS.map((e) => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1 space-y-2">
+                  <Label className="text-xs text-muted-foreground">Minutes</Label>
+                  <Input
+                    type="number"
+                    value={editMin}
+                    onChange={(e) => setEditMin(e.target.value)}
+                    min={0}
+                    max={300}
+                  />
+                </div>
+                <span className="pb-2 text-xl font-bold">:</span>
+                <div className="flex-1 space-y-2">
+                  <Label className="text-xs text-muted-foreground">Seconds</Label>
+                  <Input
+                    type="number"
+                    value={editSec}
+                    onChange={(e) => setEditSec(e.target.value)}
+                    min={0}
+                    max={59}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSave} disabled={saving} className="flex-1">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                  disabled={saving}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              {baseline ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {eventLabel(baseline.event)} — {formatTime(baseline.time_seconds)}
+                    </p>
+                    {baseline.race_date && (
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(baseline.race_date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Source: {baseline.source === "auto" ? "Auto-detected from training" : baseline.source}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={startEdit}>
+                    <Pencil className="mr-1 h-3 w-3" /> Edit
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">No baseline set</p>
+                  <Button variant="outline" size="sm" onClick={startEdit}>
+                    Set Baseline
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -495,55 +649,11 @@ function SettingsContent() {
       <Separator />
 
       {/* Baseline Race */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-          <Timer className="h-4 w-4" />
-          Baseline Race
-        </h2>
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            {baselineLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            ) : baseline ? (
-              <>
-                <div>
-                  <p className="text-sm font-medium">
-                    {eventLabel(baseline.event)} —{" "}
-                    {formatTime(baseline.time_seconds)}
-                  </p>
-                  {baseline.race_date && (
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(baseline.race_date).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push("/onboarding/2")}
-                >
-                  Edit <ChevronRight className="ml-1 h-3 w-3" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">No baseline set</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push("/onboarding/2")}
-                >
-                  Set Baseline <ChevronRight className="ml-1 h-3 w-3" />
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <BaselineSection
+        baseline={baseline}
+        baselineLoading={baselineLoading}
+        onUpdated={fetchBaseline}
+      />
 
       <Separator />
 

@@ -13,17 +13,15 @@ export async function GET(request: Request) {
     const { error, data } = await supabase.auth.exchangeCodeForSession(code);
     if (!error && data.session) {
       try {
-        const res = await fetch(`${API_URL}/account/baseline`, {
+        const res = await fetch(`${API_URL}/account/onboarding-status`, {
           headers: {
             Authorization: `Bearer ${data.session.access_token}`,
             "Content-Type": "application/json",
           },
         });
         if (res.ok) {
-          const baseline = await res.json();
-          const isNewUser =
-            !baseline.race_date && baseline.source === "auto";
-          if (isNewUser) {
+          const { onboarding_completed } = await res.json();
+          if (!onboarding_completed) {
             return NextResponse.redirect(`${origin}/onboarding/1`);
           }
         }

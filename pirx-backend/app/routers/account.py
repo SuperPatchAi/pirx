@@ -135,6 +135,20 @@ async def delete_user_data(user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Onboarding Status
+# ---------------------------------------------------------------------------
+
+
+@router.get("/onboarding-status")
+async def get_onboarding_status(user: dict = Depends(get_current_user)):
+    """Check whether the user has completed onboarding."""
+    db = SupabaseService()
+    user_data = db.get_user(user["user_id"])
+    completed = bool(user_data.get("onboarding_completed")) if user_data else False
+    return {"onboarding_completed": completed}
+
+
+# ---------------------------------------------------------------------------
 # Baseline Management
 # ---------------------------------------------------------------------------
 

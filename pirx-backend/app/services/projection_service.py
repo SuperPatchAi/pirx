@@ -34,10 +34,22 @@ class ProjectionService:
         """
         try:
             user_data = self.db.get_user(user_id) or {}
-            raw_baseline = user_data.get("baseline_time_seconds")
+            manual_baseline = user_data.get("baseline_time_seconds")
             baseline_event = user_data.get("baseline_event") or "5000"
-            if not raw_baseline:
-                raw_baseline = self._estimate_baseline(user_id)
+            baseline_source = user_data.get("baseline_source") or ""
+
+            ml_baseline = self._estimate_baseline(user_id)
+            ml_is_default = abs(ml_baseline - 1500.0) < 1
+
+            if ml_is_default and manual_baseline:
+                raw_baseline = manual_baseline
+            elif not ml_is_default:
+                raw_baseline = ml_baseline
+                baseline_event = "5000"
+            elif manual_baseline:
+                raw_baseline = manual_baseline
+            else:
+                raw_baseline = ml_baseline
                 baseline_event = "5000"
         except Exception:
             raw_baseline = self._estimate_baseline(user_id)

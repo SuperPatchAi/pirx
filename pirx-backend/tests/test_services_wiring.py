@@ -357,10 +357,12 @@ class TestCeleryTasks:
         assert result["status"] in ("no_data", "error")
         assert result["user_id"] == "user-abc"
 
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_recompute_all_events_no_data(self, mock_sb):
+    def test_recompute_all_events_no_data(self, mock_sb, mock_redis):
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
+        mock_redis.return_value.set.return_value = True
         mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
 
         from app.tasks.projection_tasks import recompute_all_events

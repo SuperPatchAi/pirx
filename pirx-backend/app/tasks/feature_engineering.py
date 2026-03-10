@@ -1,6 +1,28 @@
+import logging
 import os
 
 from app.tasks import celery_app
+
+logger = logging.getLogger(__name__)
+
+DEDUP_TTL_SECONDS = 60
+
+
+def _acquire_dedup_lock(user_id: str, lock_name: str) -> bool:
+    """Acquire a short-lived Redis lock to prevent duplicate task execution.
+
+    Returns True if the lock was acquired (this task should proceed).
+    Returns False if another task already holds the lock (skip).
+    Falls back to True (no dedup) if Redis is unavailable.
+    """
+    try:
+        import redis
+        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        key = f"pirx:lock:{lock_name}:{user_id}"
+        acquired = r.set(key, "1", nx=True, ex=DEDUP_TTL_SECONDS)
+        return bool(acquired)
+    except Exception:
+        return True
 
 
 @celery_app.task(name="app.tasks.feature_engineering.compute_features")
@@ -13,7 +35,14 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
     3. Compute 25 features via FeatureService
     4. Cache features in Redis
     5. Queue recompute_all_events for all distance projections
+
+    Uses a Redis dedup lock to prevent thundering herd when multiple
+    webhooks/backfill tasks fire compute_features for the same user.
     """
+    if not _acquire_dedup_lock(user_id, "compute_features"):
+        logger.info("compute_features skipped for user %s (dedup lock held)", user_id)
+        return {"user_id": user_id, "status": "deduplicated"}
+
     from app.services.cleaning_service import CleaningService
     from app.services.feature_service import FeatureService
     from app.models.activities import NormalizedActivity

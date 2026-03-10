@@ -87,7 +87,7 @@ def process_activity(user_id: str, raw_payload: dict, source: str = "unknown") -
                 avg_hr=cleaned.avg_hr,
             )
     except Exception:
-        logger.debug("Activity embedding failed")
+        logger.warning("Activity embedding failed for user %s", user_id, exc_info=True)
 
     if cleaned.activity_type == "race":
         from app.tasks.projection_tasks import recompute_all_events

@@ -89,14 +89,14 @@ class FeatureService:
         w42 = FeatureService._filter_window(activities, ref, 42)
         w90 = FeatureService._filter_window(activities, ref, 90)
 
-        dist_7 = sum(a.distance_meters for a in w7)
-        dist_21 = sum(a.distance_meters for a in w21)
-        dist_42 = sum(a.distance_meters for a in w42)
-        dist_90 = sum(a.distance_meters for a in w90)
+        dist_7 = sum(a.distance_meters or 0 for a in w7)
+        dist_21 = sum(a.distance_meters or 0 for a in w21)
+        dist_42 = sum(a.distance_meters or 0 for a in w42)
+        dist_90 = sum(a.distance_meters or 0 for a in w90)
 
         sessions_per_week = len(w7)
 
-        long_run_count = sum(1 for a in w42 if a.distance_meters >= 15000)
+        long_run_count = sum(1 for a in w42 if (a.distance_meters or 0) >= 15000)
 
         return {
             "rolling_distance_7d": dist_7,
@@ -227,7 +227,7 @@ class FeatureService:
             week_activities = [
                 a for a in w42 if week_start <= a.timestamp < week_end
             ]
-            weekly_loads.append(sum(a.distance_meters for a in week_activities))
+            weekly_loads.append(sum(a.distance_meters or 0 for a in week_activities))
 
         weekly_load_stddev = float(np.std(weekly_loads)) if weekly_loads else None
 
@@ -238,7 +238,7 @@ class FeatureService:
             block_activities = [
                 a for a in w42 if block_start <= a.timestamp < block_end
             ]
-            block_loads.append(sum(a.distance_meters for a in block_activities))
+            block_loads.append(sum(a.distance_meters or 0 for a in block_activities))
 
         block_variance = float(np.var(block_loads)) if block_loads else None
 
@@ -286,7 +286,7 @@ class FeatureService:
             day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
             day_end = day_start + timedelta(days=1)
             day_load = sum(
-                a.distance_meters
+                a.distance_meters or 0
                 for a in activities
                 if day_start <= a.timestamp < day_end
             )

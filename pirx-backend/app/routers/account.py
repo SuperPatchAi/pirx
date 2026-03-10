@@ -153,10 +153,10 @@ async def get_baseline(user: dict = Depends(get_current_user)):
     user_data = db.get_user(user["user_id"])
     if user_data:
         return {
-            "event": user_data.get("baseline_event", "5000"),
-            "time_seconds": user_data.get("baseline_time_seconds", 1260.0),
+            "event": user_data.get("baseline_event") or "5000",
+            "time_seconds": user_data.get("baseline_time_seconds") or 1260.0,
             "race_date": user_data.get("baseline_race_date"),
-            "source": user_data.get("baseline_source", "auto"),
+            "source": user_data.get("baseline_source") or "auto",
         }
     return {"event": "5000", "time_seconds": 1260.0, "race_date": None, "source": "auto"}
 

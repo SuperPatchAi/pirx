@@ -16,18 +16,18 @@ def get_projection(user_id: str, event: str = "5000") -> dict:
 
     db = SupabaseService()
     proj = db.get_latest_projection(user_id, event)
-    if proj:
+    if proj and proj.get("midpoint_seconds"):
+        range_low = proj.get('range_low_seconds') or proj.get('range_lower') or 0
+        range_high = proj.get('range_high_seconds') or proj.get('range_upper') or 0
         return {
             "event": event,
             "projected_time_seconds": proj["midpoint_seconds"],
-            "supported_range": (
-                f"{proj.get('range_low_seconds', proj.get('range_lower', 0)):.1f}s – {proj.get('range_high_seconds', proj.get('range_upper', 0)):.1f}s"
-            ),
+            "supported_range": f"{range_low:.1f}s – {range_high:.1f}s",
             "improvement_since_baseline": proj.get(
-                "improvement_since_baseline", 0
-            ),
-            "twenty_one_day_change": proj.get("twenty_one_day_change", 0),
-            "status": proj.get("status", "Holding"),
+                "improvement_since_baseline"
+            ) or 0,
+            "twenty_one_day_change": proj.get("twenty_one_day_change") or 0,
+            "status": proj.get("status") or "Holding",
             "last_updated": proj.get("computed_at"),
         }
     return {"event": event, "status": "No projection data available yet"}
@@ -58,7 +58,7 @@ def get_drivers(user_id: str) -> dict:
             drivers.append(
                 {
                     "name": display,
-                    "contribution_seconds": row.get(f"{key}_seconds", 0),
+                    "contribution_seconds": row.get(f"{key}_seconds") or 0,
                 }
             )
         return {"drivers": drivers, "computed_at": row.get("computed_at")}
@@ -86,10 +86,10 @@ def get_training_history(
         "period_days": days,
         "total_activities": len(activities),
         "total_distance_km": round(
-            sum(a.get("distance_meters", 0) for a in activities) / 1000, 1
+            sum(a.get("distance_meters") or 0 for a in activities) / 1000, 1
         ),
         "total_duration_hours": round(
-            sum(a.get("duration_seconds", 0) for a in activities) / 3600, 1
+            sum(a.get("duration_seconds") or 0 for a in activities) / 3600, 1
         ),
         "activity_breakdown": {},
     }
@@ -166,7 +166,7 @@ def get_readiness(user_id: str) -> dict:
 
         physiology = db.get_recent_physiology(user_id, limit=1)
         sleep_score = (
-            physiology[0].get("sleep_score", 75) if physiology else 75
+            (physiology[0].get("sleep_score") or 75) if physiology else 75
         )
 
         result = ReadinessEngine.compute_readiness(
@@ -310,10 +310,10 @@ def compare_periods(
         return {
             "sessions": len(acts),
             "total_km": round(
-                sum(a.get("distance_meters", 0) for a in acts) / 1000, 1
+                sum(a.get("distance_meters") or 0 for a in acts) / 1000, 1
             ),
             "total_hours": round(
-                sum(a.get("duration_seconds", 0) for a in acts) / 3600, 1
+                sum(a.get("duration_seconds") or 0 for a in acts) / 3600, 1
             ),
         }
 

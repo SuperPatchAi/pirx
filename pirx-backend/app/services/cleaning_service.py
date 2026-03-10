@@ -42,18 +42,18 @@ class CleaningService:
 
         # Filter 2: Minimum duration (races get shorter minimum: 60s)
         min_dur = 60 if activity.activity_type == "race" else MIN_DURATION_SECONDS
-        if activity.duration_seconds < min_dur:
+        if (activity.duration_seconds or 0) < min_dur:
             return None
 
         # Filter 3: Minimum distance (races get shorter minimum: 400m)
         min_dist = 400 if activity.activity_type == "race" else MIN_DISTANCE_METERS
-        if activity.distance_meters < min_dist:
+        if (activity.distance_meters or 0) < min_dist:
             return None
 
         # Filter 4: Compute pace if not provided
         pace = activity.avg_pace_sec_per_km
-        if pace is None and activity.distance_meters > 0:
-            pace = activity.duration_seconds / (activity.distance_meters / 1000)
+        if pace is None and (activity.distance_meters or 0) > 0:
+            pace = (activity.duration_seconds or 0) / ((activity.distance_meters or 0) / 1000)
 
         if pace is not None:
             # Filter 5: Absolute pace bounds
@@ -72,7 +72,7 @@ class CleaningService:
         if (not is_indoor
             and activity.elevation_gain_m is not None
             and activity.elevation_gain_m == 0
-            and activity.distance_meters > 10000):
+            and (activity.distance_meters or 0) > 10000):
             return None  # Zero elevation on 10K+ outdoor run suggests bad GPS
 
         return activity
@@ -99,10 +99,10 @@ class CleaningService:
         """
         paces = []
         for a in activities:
-            if a.activity_type in RUNNING_TYPES and a.distance_meters > 0:
+            if a.activity_type in RUNNING_TYPES and (a.distance_meters or 0) > 0:
                 pace = a.avg_pace_sec_per_km
                 if pace is None:
-                    pace = a.duration_seconds / (a.distance_meters / 1000)
+                    pace = (a.duration_seconds or 0) / ((a.distance_meters or 0) / 1000)
                 if MIN_PACE_SEC_PER_KM <= pace <= MAX_PACE_SEC_PER_KM:
                     paces.append(pace)
 

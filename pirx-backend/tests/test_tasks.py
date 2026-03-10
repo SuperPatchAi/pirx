@@ -12,8 +12,9 @@ from app.tasks.projection_tasks import (
 
 
 class TestComputeFeaturesTask:
+    @patch("app.tasks.feature_engineering._acquire_dedup_lock", return_value=True)
     @patch("app.services.supabase_client.SupabaseService")
-    def test_no_activities_returns_no_activities(self, mock_db_cls):
+    def test_no_activities_returns_no_activities(self, mock_db_cls, _mock_lock):
         mock_db = MagicMock()
         mock_db.get_recent_activities.return_value = []
         mock_db_cls.return_value = mock_db
@@ -21,8 +22,9 @@ class TestComputeFeaturesTask:
         assert result["status"] == "no_activities"
         assert result["user_id"] == "user-123"
 
+    @patch("app.tasks.feature_engineering._acquire_dedup_lock", return_value=True)
     @patch("app.tasks.projection_tasks.recompute_all_events")
-    def test_with_activity_data(self, mock_recompute_all):
+    def test_with_activity_data(self, mock_recompute_all, _mock_lock):
         mock_recompute_all.delay = MagicMock()
         activity_data = {
             "source": "strava",
@@ -39,7 +41,8 @@ class TestComputeFeaturesTask:
         assert result["projection_recompute_triggered"] is True
         mock_recompute_all.delay.assert_called_once_with("user-123")
 
-    def test_cross_training_filtered_out(self):
+    @patch("app.tasks.feature_engineering._acquire_dedup_lock", return_value=True)
+    def test_cross_training_filtered_out(self, _mock_lock):
         activity_data = {
             "source": "strava",
             "timestamp": "2026-03-01T08:00:00",
@@ -50,9 +53,11 @@ class TestComputeFeaturesTask:
         result = compute_features("user-123", activity_data=activity_data)
         assert result["status"] == "all_filtered"
 
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_recompute_all_events_covers_six_events(self, mock_sb):
+    def test_recompute_all_events_covers_six_events(self, mock_sb, mock_redis):
         mock_sb.return_value = MagicMock()
+        mock_redis.return_value.set.return_value = True
         result = recompute_all_events("user-test")
         assert len(result["events"]) == 6
         for ev in ("1500", "3000", "5000", "10000", "21097", "42195"):
@@ -117,10 +122,12 @@ class TestProjectionTasks:
         result = recompute_projection("user-123", "3000")
         assert result["status"] in ("no_data", "error")
 
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_recompute_all_events(self, mock_sb):
+    def test_recompute_all_events(self, mock_sb, mock_redis):
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
+        mock_redis.return_value.set.return_value = True
         mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
         result = recompute_all_events("user-123")
         assert "1500" in result["events"]

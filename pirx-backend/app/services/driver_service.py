@@ -59,7 +59,7 @@ class DriverService:
                 .execute()
             )
             if old_proj.data:
-                old_time = old_proj.data[0].get("midpoint_seconds", 0)
+                old_time = old_proj.data[0].get("midpoint_seconds") or 0
                 if old_time > 0:
                     twenty_one_day_change = round(
                         old_time - projection_state.projected_time_seconds, 2
@@ -120,7 +120,7 @@ class DriverService:
         """Classify driver stability from history: Stable / Active / Declining."""
         if len(history) < 3:
             return "Active"
-        scores = [h.get(f"{driver_name}_score", 50) for h in history[-6:]]
+        scores = [h.get(f"{driver_name}_score") or 50 for h in history[-6:]]
         if len(scores) < 2:
             return "Active"
         import numpy as np

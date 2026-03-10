@@ -53,12 +53,15 @@ class ProjectionService:
 
         try:
             prev_row = self.db.get_latest_projection(user_id, event)
-            previous_state = ProjectionState(
-                projected_time_seconds=prev_row["midpoint_seconds"],
-                supported_range_low=prev_row.get("range_low_seconds", 0),
-                supported_range_high=prev_row.get("range_high_seconds", 0),
-                baseline_time_seconds=prev_row.get("baseline_seconds", baseline_time),
-            ) if prev_row else None
+            if prev_row and prev_row.get("midpoint_seconds"):
+                previous_state = ProjectionState(
+                    projected_time_seconds=prev_row["midpoint_seconds"],
+                    supported_range_low=prev_row.get("range_low_seconds") or 0,
+                    supported_range_high=prev_row.get("range_high_seconds") or 0,
+                    baseline_time_seconds=prev_row.get("baseline_seconds") or baseline_time,
+                )
+            else:
+                previous_state = None
         except Exception:
             previous_state = None
 
@@ -84,7 +87,7 @@ class ProjectionService:
                     improvement_s=improvement,
                 )
             except Exception:
-                logger.warning("Failed to embed projection change")
+                logger.warning("Failed to embed projection change", exc_info=True)
 
             try:
                 notif_svc = NotificationService()
@@ -97,7 +100,7 @@ class ProjectionService:
                 if payload:
                     notif_svc.dispatch(user_id, payload)
             except Exception:
-                logger.warning("Failed to send projection notification")
+                logger.warning("Failed to send projection notification", exc_info=True)
 
         return new_state
 
@@ -113,8 +116,10 @@ class ProjectionService:
             paces = []
             for a in activities:
                 pace = a.get("avg_pace_sec_per_km")
-                dist = a.get("distance_meters", 0)
-                dur = a.get("duration_seconds", 0)
+                if pace is not None:
+                    pace = float(pace)
+                dist = float(a.get("distance_meters") or 0)
+                dur = float(a.get("duration_seconds") or 0)
                 if pace is None and dist > 0 and dur > 0:
                     pace = dur / (dist / 1000)
                 if pace and 223 <= pace <= 900 and dist > 1600:

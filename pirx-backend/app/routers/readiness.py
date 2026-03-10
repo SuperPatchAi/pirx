@@ -65,7 +65,7 @@ async def get_readiness(
                 days_since_long_run = 30
 
         physiology = db.get_recent_physiology(user["user_id"], limit=1)
-        sleep_score = physiology[0].get("sleep_score", 75) if physiology else 75
+        sleep_score = (physiology[0].get("sleep_score") or 75) if physiology else 75
 
         result = ReadinessEngine.compute_readiness(
             features=features,

@@ -1,7 +1,11 @@
+import os
+
 from app.tasks import celery_app
 import logging
 
 logger = logging.getLogger(__name__)
+
+DEDUP_TTL_SECONDS = 60
 
 
 @celery_app.task(name="app.tasks.projection_tasks.recompute_projection")
@@ -50,7 +54,20 @@ def recompute_projection(user_id: str, event: str = "5000") -> dict:
 
 @celery_app.task(name="app.tasks.projection_tasks.recompute_all_events")
 def recompute_all_events(user_id: str) -> dict:
-    """Recompute projections for all events after race sync or major change."""
+    """Recompute projections for all events after race sync or major change.
+
+    Uses a Redis dedup lock so concurrent calls for the same user are collapsed.
+    """
+    try:
+        import redis
+        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        key = f"pirx:lock:recompute_all:{user_id}"
+        if not r.set(key, "1", nx=True, ex=DEDUP_TTL_SECONDS):
+            logger.info("recompute_all_events skipped for user %s (dedup)", user_id)
+            return {"user_id": user_id, "status": "deduplicated"}
+    except Exception:
+        pass
+
     events = ["1500", "3000", "5000", "10000", "21097", "42195"]
     results = {}
     for event in events:
@@ -97,13 +114,13 @@ def structural_decay_check() -> dict:
                         db.insert_projection({
                             "user_id": user_id,
                             "event": event,
-                            "midpoint_seconds": proj.get("midpoint_seconds"),
-                            "range_lower": proj.get("range_lower"),
-                            "range_upper": proj.get("range_upper"),
-                            "range_low_seconds": proj.get("range_low_seconds"),
-                            "range_high_seconds": proj.get("range_high_seconds"),
+                            "midpoint_seconds": proj.get("midpoint_seconds") or 0,
+                            "range_lower": proj.get("range_lower") or 0,
+                            "range_upper": proj.get("range_upper") or 0,
+                            "range_low_seconds": proj.get("range_low_seconds") or 0,
+                            "range_high_seconds": proj.get("range_high_seconds") or 0,
                             "confidence_score": max((proj.get("confidence_score") or 0.5) - 0.1, 0.1),
-                            "volatility_score": proj.get("volatility_score", 0),
+                            "volatility_score": proj.get("volatility_score") or 0,
                             "status": "Declining",
                         })
                 from app.services.notification_service import NotificationService, NotificationPayload
@@ -130,13 +147,13 @@ def structural_decay_check() -> dict:
                         db.insert_projection({
                             "user_id": user_id,
                             "event": event,
-                            "midpoint_seconds": proj.get("midpoint_seconds"),
+                            "midpoint_seconds": proj.get("midpoint_seconds") or 0,
                             "range_lower": widened_low,
                             "range_upper": widened_high,
                             "range_low_seconds": widened_low,
                             "range_high_seconds": widened_high,
                             "confidence_score": max((proj.get("confidence_score") or 0.5) - 0.05, 0.1),
-                            "volatility_score": proj.get("volatility_score", 0),
+                            "volatility_score": proj.get("volatility_score") or 0,
                             "status": "Holding",
                         })
                 from app.services.notification_service import NotificationService, NotificationPayload
@@ -188,8 +205,8 @@ def weekly_summary() -> dict:
             if not activities:
                 continue
 
-            total_distance_km = sum(a.get("distance_meters", 0) for a in activities) / 1000
-            total_duration_min = sum(a.get("duration_seconds", 0) for a in activities) / 60
+            total_distance_km = sum(float(a.get("distance_meters") or 0) for a in activities) / 1000
+            total_duration_min = sum(float(a.get("duration_seconds") or 0) for a in activities) / 60
             run_count = len(activities)
 
             proj_5k = db.get_latest_projection(user_id, "5000")
@@ -300,8 +317,8 @@ def bias_correction() -> dict:
                 continue
 
             race = races[0]
-            race_distance = race.get("distance_meters", 0)
-            race_time = race.get("duration_seconds", 0)
+            race_distance = float(race.get("distance_meters") or 0)
+            race_time = float(race.get("duration_seconds") or 0)
             if not race_distance or not race_time:
                 continue
 

@@ -366,34 +366,45 @@ async def recompute_pipeline(user: dict = Depends(get_current_user)):
     from app.models.activities import NormalizedActivity
 
     user_id = user["user_id"]
-    db = SupabaseService()
-    raw = db.get_recent_activities(user_id, days=90)
-    if not raw:
-        return {"status": "no_activities", "user_id": user_id}
+    logger.warning("recompute_pipeline: starting for user %s", user_id)
 
-    activities = [NormalizedActivity.from_db_dict(a) for a in raw]
+    try:
+        db = SupabaseService()
+        raw = db.get_recent_activities(user_id, days=90)
+        logger.warning("recompute_pipeline: loaded %d raw activities", len(raw) if raw else 0)
 
-    for a in activities:
-        if a.timestamp and a.timestamp.tzinfo:
-            a.timestamp = a.timestamp.replace(tzinfo=None)
+        if not raw:
+            return {"status": "no_activities", "user_id": user_id}
 
-    avg_pace = CleaningService.compute_runner_avg_pace(activities)
-    cleaned = CleaningService.clean_batch(activities, avg_pace)
+        activities = [NormalizedActivity.from_db_dict(a) for a in raw]
 
-    if not cleaned:
-        return {"status": "no_valid_activities", "user_id": user_id, "raw_count": len(raw)}
+        for a in activities:
+            if a.timestamp and a.timestamp.tzinfo:
+                a.timestamp = a.timestamp.replace(tzinfo=None)
 
-    features = FeatureService.compute_all_features(cleaned, user_id=user_id)
-    features_computed = sum(1 for v in features.values() if v is not None)
+        avg_pace = CleaningService.compute_runner_avg_pace(activities)
+        cleaned = CleaningService.clean_batch(activities, avg_pace)
+        logger.warning("recompute_pipeline: cleaned %d activities (from %d raw)", len(cleaned), len(raw))
 
-    svc = ProjectionService()
-    projection_results = svc.recompute_all_events(user_id, features)
+        if not cleaned:
+            return {"status": "no_valid_activities", "user_id": user_id, "raw_count": len(raw)}
 
-    return {
-        "status": "completed",
-        "user_id": user_id,
-        "activities_loaded": len(raw),
-        "activities_cleaned": len(cleaned),
-        "features_computed": features_computed,
-        "projections": projection_results,
-    }
+        features = FeatureService.compute_all_features(cleaned, user_id=user_id)
+        features_computed = sum(1 for v in features.values() if v is not None)
+        logger.warning("recompute_pipeline: computed %d features", features_computed)
+
+        svc = ProjectionService()
+        projection_results = svc.recompute_all_events(user_id, features)
+        logger.warning("recompute_pipeline: projections=%s", projection_results)
+
+        return {
+            "status": "completed",
+            "user_id": user_id,
+            "activities_loaded": len(raw),
+            "activities_cleaned": len(cleaned),
+            "features_computed": features_computed,
+            "projections": projection_results,
+        }
+    except Exception as e:
+        logger.exception("recompute_pipeline failed for user %s", user_id)
+        return {"status": "error", "user_id": user_id, "error": str(e)}

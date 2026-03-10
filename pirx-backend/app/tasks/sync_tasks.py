@@ -276,6 +276,7 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                                 "user_id": terra_user_id,
                                 "start_date": start_date.strftime("%Y-%m-%d"),
                                 "end_date": end_date.strftime("%Y-%m-%d"),
+                                "to_webhook": "false",
                             },
                         )
                         if resp.status_code == 200:

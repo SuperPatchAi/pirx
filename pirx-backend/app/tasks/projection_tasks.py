@@ -1,11 +1,10 @@
-import os
-
 from app.tasks import celery_app
+from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
-DEDUP_TTL_SECONDS = 60
+DEDUP_TTL_SECONDS = 300
 
 
 @celery_app.task(name="app.tasks.projection_tasks.recompute_projection")
@@ -60,7 +59,7 @@ def recompute_all_events(user_id: str) -> dict:
     """
     try:
         import redis
-        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        r = redis.from_url(settings.redis_url or "redis://localhost:6379/0")
         key = f"pirx:lock:recompute_all:{user_id}"
         if not r.set(key, "1", nx=True, ex=DEDUP_TTL_SECONDS):
             logger.info("recompute_all_events skipped for user %s (dedup)", user_id)
@@ -264,7 +263,7 @@ def weekly_summary() -> dict:
                 from app.services.embedding_service import EmbeddingService
                 EmbeddingService().embed_insight(user_id, "\n".join(body_lines), "weekly_summary")
             except Exception:
-                pass
+                logger.warning("Embedding/learning module failed for user %s", user_id, exc_info=True)
             try:
                 from app.ml.learning_module import LearningModule
                 from app.services.notification_service import NotificationPayload
@@ -282,7 +281,7 @@ def weekly_summary() -> dict:
                         )
                         ns.dispatch(user_id, payload)
             except Exception:
-                pass
+                logger.warning("Embedding/learning module failed for user %s", user_id, exc_info=True)
             summaries_sent += 1
 
         return {"status": "completed", "summaries_sent": summaries_sent}

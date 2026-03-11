@@ -1,11 +1,11 @@
 import logging
-import os
 
 from app.tasks import celery_app
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-DEDUP_TTL_SECONDS = 60
+DEDUP_TTL_SECONDS = 300
 
 
 def _acquire_dedup_lock(user_id: str, lock_name: str) -> bool:
@@ -17,7 +17,7 @@ def _acquire_dedup_lock(user_id: str, lock_name: str) -> bool:
     """
     try:
         import redis
-        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        r = redis.from_url(settings.redis_url or "redis://localhost:6379/0")
         key = f"pirx:lock:{lock_name}:{user_id}"
         acquired = r.set(key, "1", nx=True, ex=DEDUP_TTL_SECONDS)
         return bool(acquired)
@@ -89,11 +89,11 @@ def compute_features(user_id: str, activity_data: dict = None) -> dict:
 
     try:
         import redis
-        r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+        r = redis.from_url(settings.redis_url or "redis://localhost:6379/0")
         import json as _json
         r.setex(f"pirx:features:{user_id}", 3600, _json.dumps({k: v for k, v in features.items() if v is not None}))
     except Exception:
-        pass
+        logger.warning("Redis feature cache write failed for user %s", user_id, exc_info=True)
 
     from app.tasks.projection_tasks import recompute_all_events
     recompute_all_events.delay(user_id)

@@ -368,7 +368,8 @@ class TestTerraDeauthentication:
 
 
 class TestTerraWebhookEndpoint:
-    def test_terra_webhook_activity(self, client):
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_activity(self, mock_sig, client):
         payload = {
             "type": "activity",
             "user": {
@@ -383,7 +384,8 @@ class TestTerraWebhookEndpoint:
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
-    def test_terra_webhook_auth(self, client):
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_auth(self, mock_sig, client):
         payload = {
             "type": "auth",
             "user": {
@@ -397,7 +399,8 @@ class TestTerraWebhookEndpoint:
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
-    def test_terra_webhook_unknown_type(self, client):
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_unknown_type(self, mock_sig, client):
         payload = {
             "type": "sleep",
             "user": {
@@ -412,6 +415,16 @@ class TestTerraWebhookEndpoint:
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
+    def test_terra_webhook_rejects_invalid_signature(self, client):
+        payload = {
+            "type": "activity",
+            "user": {"user_id": "terra-123", "provider": "GARMIN", "reference_id": "pirx-user-456"},
+            "data": [SAMPLE_TERRA_ACTIVITY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 403
+
 
 class TestBackfillTerraUserIdLookup:
     """Verify that backfill_history uses terra_user_id from wearable_connections."""
@@ -423,22 +436,27 @@ class TestBackfillTerraUserIdLookup:
         mock_task_self = MagicMock()
         mock_task_self.request.id = "task-test"
 
+        mock_redis = MagicMock()
+        mock_redis.set.return_value = True
+
         patches = [
             patch("app.services.supabase_client.SupabaseService", return_value=mock_db),
             patch("app.config.settings"),
+            patch("redis.from_url", return_value=mock_redis),
         ]
         if mock_http_client is not None:
             patches.append(patch("httpx.Client", return_value=mock_http_client))
 
-        with patches[0], patches[1] as mock_settings:
+        with patches[0], patches[1] as mock_settings, patches[2]:
             mock_settings.terra_api_key = "test-key"
             mock_settings.terra_dev_id = "test-dev"
+            mock_settings.redis_url = "redis://localhost:6379/0"
             if settings_overrides:
                 for k, v in settings_overrides.items():
                     setattr(mock_settings, k, v)
 
-            if len(patches) > 2:
-                with patches[2]:
+            if len(patches) > 3:
+                with patches[3]:
                     return backfill_history.__wrapped__("pirx-user-1", "garmin")
             return backfill_history.__wrapped__("pirx-user-1", "garmin")
 

@@ -82,6 +82,7 @@ class SupabaseService:
             .eq("user_id", user_id)
             .gte("timestamp", since)
             .order("timestamp", desc=True)
+            .limit(1000)
             .execute()
         )
         return result.data or []
@@ -93,6 +94,7 @@ class SupabaseService:
             .eq("user_id", user_id)
             .gte("timestamp", since_iso)
             .order("timestamp", desc=True)
+            .limit(1000)
             .execute()
         )
         return result.data or []
@@ -108,6 +110,7 @@ class SupabaseService:
             .gte("timestamp", from_iso)
             .lte("timestamp", to_iso)
             .order("timestamp", desc=True)
+            .limit(1000)
             .execute()
         )
         return result.data or []
@@ -151,6 +154,7 @@ class SupabaseService:
             .eq("event", event)
             .gte("computed_at", cutoff)
             .order("computed_at", desc=True)
+            .limit(500)
             .execute()
         )
         return result.data
@@ -183,6 +187,7 @@ class SupabaseService:
             .eq("user_id", user_id)
             .gte("computed_at", cutoff)
             .order("computed_at", desc=True)
+            .limit(500)
             .execute()
         )
         return result.data
@@ -296,6 +301,7 @@ class SupabaseService:
             self.client.table("users")
             .select("user_id, primary_event, baseline_race_date")
             .eq("onboarding_completed", True)
+            .limit(5000)
             .execute()
         )
         return result.data or []
@@ -308,6 +314,7 @@ class SupabaseService:
             .select("*")
             .eq("user_id", user_id)
             .order("computed_at", desc=True)
+            .limit(200)
             .execute()
         )
         return result.data or []
@@ -345,34 +352,40 @@ class SupabaseService:
             .select("*")
             .eq("user_id", user_id)
             .order("updated_at", desc=True)
+            .limit(50)
             .execute()
         )
         return result.data or []
 
-    def get_chat_thread(self, thread_id: str) -> dict | None:
-        result = (
+    def get_chat_thread(self, thread_id: str, user_id: str = None) -> dict | None:
+        query = (
             self.client.table("chat_threads")
             .select("*")
             .eq("thread_id", thread_id)
-            .limit(1)
-            .execute()
         )
+        if user_id:
+            query = query.eq("user_id", user_id)
+        result = query.limit(1).execute()
         return result.data[0] if result.data else None
 
-    def delete_chat_thread(self, thread_id: str) -> None:
-        self.client.table("chat_threads").delete().eq("thread_id", thread_id).execute()
+    def delete_chat_thread(self, thread_id: str, user_id: str = None) -> None:
+        query = self.client.table("chat_threads").delete().eq("thread_id", thread_id)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        query.execute()
 
     def insert_chat_message(self, thread_id: str, role: str, content: str) -> dict:
         data = {"thread_id": thread_id, "role": role, "content": content}
         result = self.client.table("chat_messages").insert(data).execute()
         return result.data[0] if result.data else data
 
-    def get_chat_messages(self, thread_id: str) -> list[dict]:
+    def get_chat_messages(self, thread_id: str, limit: int = 200) -> list[dict]:
         result = (
             self.client.table("chat_messages")
             .select("*")
             .eq("thread_id", thread_id)
             .order("created_at", desc=False)
+            .limit(limit)
             .execute()
         )
         return result.data or []

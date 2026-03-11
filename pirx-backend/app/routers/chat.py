@@ -34,7 +34,7 @@ class ThreadResponse(BaseModel):
 
 def _get_or_create_thread(db: SupabaseService, thread_id: Optional[str], user_id: str) -> str:
     if thread_id:
-        existing = db.get_chat_thread(thread_id)
+        existing = db.get_chat_thread(thread_id, user_id=user_id)
         if existing:
             if existing["user_id"] != user_id:
                 raise HTTPException(status_code=403, detail="Not authorized for this thread")
@@ -183,8 +183,8 @@ async def get_chat_history(
     user: dict = Depends(get_current_user),
 ):
     db = SupabaseService()
-    thread = db.get_chat_thread(thread_id)
-    if not thread or thread["user_id"] != user["user_id"]:
+    thread = db.get_chat_thread(thread_id, user_id=user["user_id"])
+    if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
     messages = db.get_chat_messages(thread_id)
     return {"thread_id": thread_id, "messages": messages}
@@ -207,8 +207,8 @@ async def delete_thread(
     user: dict = Depends(get_current_user),
 ):
     db = SupabaseService()
-    thread = db.get_chat_thread(thread_id)
-    if not thread or thread["user_id"] != user["user_id"]:
+    thread = db.get_chat_thread(thread_id, user_id=user["user_id"])
+    if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    db.delete_chat_thread(thread_id)
+    db.delete_chat_thread(thread_id, user_id=user["user_id"])
     return {"status": "deleted", "thread_id": thread_id}

@@ -122,7 +122,7 @@ class TestProjectionOperations:
         chain = (
             mock_supabase.table.return_value.select.return_value
             .eq.return_value.eq.return_value.gte.return_value
-            .order.return_value.execute
+            .order.return_value.limit.return_value.execute
         )
         chain.return_value.data = [
             {"midpoint_seconds": 1182, "computed_at": "2026-03-05T00:00:00Z"},
@@ -173,7 +173,8 @@ class TestDriverOperations:
     def test_get_driver_history(self, mock_supabase):
         chain = (
             mock_supabase.table.return_value.select.return_value
-            .eq.return_value.gte.return_value.order.return_value.execute
+            .eq.return_value.gte.return_value.order.return_value
+            .limit.return_value.execute
         )
         chain.return_value.data = [
             {"computed_at": "2026-03-05T00:00:00Z", "aerobic_base_seconds": 23.4},

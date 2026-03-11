@@ -67,7 +67,8 @@ async def get_current_user(
     if user is None:
         user = await _verify_via_supabase(token)
 
-    _ensure_public_user(user["user_id"], user.get("email"))
+    import asyncio
+    await asyncio.to_thread(_ensure_public_user, user["user_id"], user.get("email"))
     return user
 
 

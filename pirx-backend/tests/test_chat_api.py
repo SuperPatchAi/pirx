@@ -198,7 +198,11 @@ class TestThreadOwnership:
         r = client.post("/chat/thread")
         thread_id = r.json()["thread_id"]
 
-        mock_db.get_chat_thread.return_value = {"thread_id": thread_id, "user_id": "test-user"}
+        def get_chat_thread_filtered(tid, user_id=None):
+            if user_id == "user-b":
+                return None
+            return {"thread_id": tid, "user_id": "test-user"}
+        mock_db.get_chat_thread.side_effect = get_chat_thread_filtered
 
         app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-b", "email": "b@test.com"}
         r2 = client.get(f"/chat/history?thread_id={thread_id}")
@@ -213,7 +217,11 @@ class TestThreadOwnership:
         r = client.post("/chat/thread")
         thread_id = r.json()["thread_id"]
 
-        mock_db.get_chat_thread.return_value = {"thread_id": thread_id, "user_id": "test-user"}
+        def get_chat_thread_filtered(tid, user_id=None):
+            if user_id == "user-b":
+                return None
+            return {"thread_id": tid, "user_id": "test-user"}
+        mock_db.get_chat_thread.side_effect = get_chat_thread_filtered
 
         app.dependency_overrides[get_current_user] = lambda: {"user_id": "user-b", "email": "b@test.com"}
         r2 = client.delete(f"/chat/thread/{thread_id}")
@@ -287,7 +295,7 @@ class TestChatThreadDBPersistence:
         assert data["messages"][0]["role"] == "user"
         assert data["messages"][1]["role"] == "assistant"
 
-        inst.get_chat_thread.assert_called_once_with("thread-xyz")
+        inst.get_chat_thread.assert_called_once_with("thread-xyz", user_id="test-user")
         inst.get_chat_messages.assert_called_once_with("thread-xyz")
 
     @patch("app.routers.chat.SupabaseService")
@@ -307,5 +315,5 @@ class TestChatThreadDBPersistence:
         assert data["status"] == "deleted"
         assert data["thread_id"] == "thread-del"
 
-        inst.get_chat_thread.assert_called_once_with("thread-del")
-        inst.delete_chat_thread.assert_called_once_with("thread-del")
+        inst.get_chat_thread.assert_called_once_with("thread-del", user_id="test-user")
+        inst.delete_chat_thread.assert_called_once_with("thread-del", user_id="test-user")

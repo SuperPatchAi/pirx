@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.tasks import celery_app
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,16 @@ def process_activity(user_id: str, raw_payload: dict, source: str = "unknown") -
 
 @celery_app.task(name="app.tasks.sync_tasks.backfill_history", bind=True)
 def backfill_history(self, user_id: str, provider: str) -> dict:
+    try:
+        import redis
+        r = redis.from_url(settings.redis_url or "redis://localhost:6379/0")
+        lock_key = f"pirx:lock:backfill:{user_id}:{provider}"
+        if not r.set(lock_key, "1", nx=True, ex=300):
+            logger.info("backfill_history skipped for user %s provider %s (dedup)", user_id, provider)
+            return {"status": "deduplicated", "user_id": user_id}
+    except Exception:
+        logger.warning("Redis dedup lock unavailable for backfill user=%s, proceeding anyway", user_id, exc_info=True)
+
     from app.services.supabase_client import SupabaseService
     from app.services.cleaning_service import CleaningService
     from app.models.activities import NormalizedActivity
@@ -327,7 +338,7 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
         try:
             db.update_task_status(self.request.id or "unknown", "completed")
         except Exception:
-            pass
+            logger.warning("Task status update failed for task %s", self.request.id, exc_info=True)
 
         return {
             "status": "completed",

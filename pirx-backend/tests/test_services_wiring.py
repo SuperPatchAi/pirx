@@ -349,7 +349,7 @@ class TestCeleryTasks:
     def test_recompute_projection_no_data(self, mock_sb):
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
-        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
 
         from app.tasks.projection_tasks import recompute_projection
 
@@ -363,7 +363,7 @@ class TestCeleryTasks:
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
         mock_redis.return_value.set.return_value = True
-        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
 
         from app.tasks.projection_tasks import recompute_all_events
 
@@ -403,8 +403,10 @@ class TestCeleryTasks:
         assert result["status"] == "completed"
         assert "users_corrected" in result
 
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_backfill_history_strava(self, mock_sb):
+    def test_backfill_history_strava(self, mock_sb, mock_redis):
+        mock_redis.return_value.set.return_value = True
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
         mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
@@ -428,8 +430,10 @@ class TestCeleryTasks:
         assert result["provider"] == "strava"
         assert "activities_imported" in result
 
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_backfill_history_terra(self, mock_sb):
+    def test_backfill_history_terra(self, mock_sb, mock_redis):
+        mock_redis.return_value.set.return_value = True
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
         mock_client.table.return_value.insert.return_value.execute.return_value.data = [{}]

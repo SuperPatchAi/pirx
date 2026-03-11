@@ -118,7 +118,7 @@ class TestProjectionTasks:
     def test_recompute_no_data(self, mock_sb):
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
-        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
         result = recompute_projection("user-123", "3000")
         assert result["status"] in ("no_data", "error")
 
@@ -128,7 +128,7 @@ class TestProjectionTasks:
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
         mock_redis.return_value.set.return_value = True
-        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(data=[])
+        mock_client.table.return_value.select.return_value.eq.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
         result = recompute_all_events("user-123")
         assert "1500" in result["events"]
         assert "10000" in result["events"]
@@ -154,8 +154,10 @@ class TestProjectionTasks:
 
 class TestBackfillTask:
     @patch("httpx.Client")
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_backfill_strava(self, mock_sb, mock_httpx_cls):
+    def test_backfill_strava(self, mock_sb, mock_redis, mock_httpx_cls):
+        mock_redis.return_value.set.return_value = True
         mock_client = MagicMock()
         mock_sb.return_value = mock_client
         mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
@@ -176,9 +178,11 @@ class TestBackfillTask:
         assert result["provider"] == "strava"
 
     @patch("httpx.Client")
+    @patch("redis.from_url")
     @patch("app.services.supabase_client.SupabaseService")
     @patch("app.services.supabase_client.get_supabase_client")
-    def test_backfill_history_strava_with_activities(self, mock_sb, mock_svc_cls, mock_httpx_cls):
+    def test_backfill_history_strava_with_activities(self, mock_sb, mock_svc_cls, mock_redis, mock_httpx_cls):
+        mock_redis.return_value.set.return_value = True
         """Mock Strava API returning activities; verify they are stored."""
         mock_sb.return_value = MagicMock()
 

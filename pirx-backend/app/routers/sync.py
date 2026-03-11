@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.dependencies import get_current_user
@@ -154,8 +155,12 @@ async def strava_webhook_verify(
 @router.post("/webhook/strava")
 async def strava_webhook_receive(request: Request):
     """Handle incoming Strava webhook events. Must respond within 2 seconds."""
-    payload = await request.json()
-    event = StravaWebhookEvent(**payload)
+    try:
+        payload = await request.json()
+        event = StravaWebhookEvent(**payload)
+    except Exception:
+        logger.warning("Strava webhook: malformed payload")
+        return JSONResponse({"status": "bad_request"}, status_code=400)
 
     if event.object_type == "activity" and event.aspect_type == "create":
         try:
@@ -178,14 +183,17 @@ async def strava_webhook_receive(request: Request):
 @router.post("/webhook/terra")
 async def terra_webhook(request: Request):
     """Receive Terra API webhook for new activity data."""
-    body = await request.body()
+    try:
+        body = await request.body()
+        payload = TerraWebhookPayload(**(await request.json()))
+    except Exception:
+        logger.warning("Terra webhook: malformed payload")
+        return JSONResponse({"status": "bad_request"}, status_code=400)
+
     signature = request.headers.get("terra-signature", "")
     if not TerraService.verify_webhook_signature(body, signature):
-        logger.warning(
-            "Terra webhook signature verification failed — accepting anyway (TODO: fix and re-enable strict check)"
-        )
-
-    payload = TerraWebhookPayload(**(await request.json()))
+        logger.warning("Terra webhook signature verification failed")
+        return JSONResponse({"status": "signature_invalid"}, status_code=403)
     logger.warning(
         "Terra webhook received: type=%s status=%s user=%s data_count=%d",
         payload.type,

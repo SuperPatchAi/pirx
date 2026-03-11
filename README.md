@@ -67,6 +67,17 @@ This document is the operational reference for architecture, data flow, ML calcu
 - LLM/Embeddings: OpenAI/Google model clients
 - Push notifications + background services per task scheduler
 
+### Operational Guardrails (Current)
+
+- Chat thread ownership is enforced server-side via `user_id`-scoped thread lookup and deletion paths.
+- Webhook robustness:
+  - malformed Strava/Terra payloads return `400`
+  - invalid Terra signatures return `403`
+- Supabase access methods apply explicit row caps on high-volume queries (activities, history, users, chat messages).
+- Task dedup lock windows are set to `300s` for feature recompute/backfill projections to reduce duplicate work.
+- Frontend client persistence is user-scoped for chat thread IDs, notification preferences, and tour completion flags.
+- Auth sign-out resets projection store state and onboarding gate cache to prevent cross-user stale state.
+
 ## End-to-End Data Flow
 
 ```mermaid

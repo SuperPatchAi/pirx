@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: pirx-backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
     plan: starter
     healthCheckPath: /health
     envVars:
@@ -55,7 +55,7 @@ services:
     runtime: python
     rootDir: pirx-backend
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.tasks worker --loglevel=info --concurrency=2 -Q celery,sync,projection
+    startCommand: celery -A app.tasks worker --loglevel=info --concurrency=4 -Q celery,sync,projection
     plan: starter
     envVars:
       - key: PYTHON_VERSION

@@ -242,6 +242,38 @@ class TestDriverService:
 
 class TestProjectionService:
     @patch("app.services.supabase_client.get_supabase_client")
+    def test_orchestrator_defaults_to_deterministic(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+        decision = svc.orchestrator.select_projection_model("u1", "5000", MOCK_FEATURES)
+        assert decision.model_type == "deterministic"
+        assert decision.reason == "default_production_path"
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_non_deterministic_selection_falls_back_to_deterministic_path(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+
+        with patch.object(svc.db, "get_user", return_value={"baseline_time_seconds": 1260.0}), \
+             patch.object(svc.db, "get_latest_projection", return_value=None), \
+             patch.object(svc.orchestrator, "select_projection_model", return_value=MagicMock(model_type="lstm", reason="test")), \
+             patch.object(svc.driver_service, "compute_and_store_drivers", return_value=(_make_projection_state(), _make_driver_states())) as mock_compute:
+            state = svc.recompute("u1", "5000", MOCK_FEATURES)
+
+        assert state is not None
+        mock_compute.assert_called_once()
+
+    @patch("app.services.supabase_client.get_supabase_client")
     def test_recompute_first_projection(self, mock_sb):
         """First projection with no previous state."""
         mock_client = MagicMock()
@@ -342,6 +374,21 @@ class TestProjectionService:
 
         assert state is not None
         assert state.baseline_time_seconds == 1500.0
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_estimate_baseline_uses_knn_when_tiered_returns_default(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+        with patch.object(svc.db, "get_recent_activities", return_value=MOCK_FEATURES), \
+             patch("app.services.projection_service.estimate_5k_baseline", return_value=1500.0), \
+             patch("app.services.projection_service.estimate_5k_cold_start_knn", return_value=1320.0):
+            baseline = svc._estimate_baseline("u1")
+        assert baseline == 1320.0
 
 
 class TestCeleryTasks:

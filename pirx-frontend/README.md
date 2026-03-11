@@ -1,36 +1,138 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PIRX Frontend Reference
 
-## Getting Started
+Frontend application for PIRX built with Next.js App Router, Supabase auth/session, and backend APIs served by `pirx-backend`.
 
-First, run the development server:
+Use this as the frontend source-of-truth alongside:
+
+- root `README.md` (end-to-end architecture, data flow, ML)
+- `pirx-backend/migrations/README.md` (schema/migrations)
+
+## Tech Stack
+
+- Next.js App Router (`src/app`)
+- React + TypeScript
+- Supabase client/session (`@supabase/ssr`)
+- shadcn/ui components
+- Zustand stores for projection and tour state
+- Framer Motion + Recharts for interaction/visualization
+
+## Local Development
+
+From `pirx-frontend`:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App runs on `http://localhost:3000` by default.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required frontend env vars:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_API_URL` (backend base URL, defaults to `http://localhost:8001`)
 
-## Learn More
+## Frontend Architecture
 
-To learn more about Next.js, take a look at the following resources:
+### Route groups
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `src/app/(auth)` - login/signup/auth entry points
+- `src/app/(app)` - authenticated app shell and core product pages
+- `src/app/(public)` - public/legal/static pages
+- `src/app/auth/callback/route.ts` - Supabase auth callback exchange/redirect logic
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### App shell and guards
 
-## Deploy on Vercel
+- `src/middleware.ts`
+  - protects app routes (`/dashboard`, `/performance`, `/settings`, etc.)
+  - redirects unauthenticated users to `/login`
+- `src/app/(app)/layout.tsx`
+  - app chrome (bottom nav, chat FAB, tour provider, consent banner)
+  - onboarding gate using `/account/onboarding-status`
+  - cached onboarding check with reset on sign-out
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### API access pattern
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/api.ts`
+  - `apiFetch(path, options)` reads current Supabase session
+  - adds `Authorization: Bearer <token>`
+  - throws on non-2xx responses
+  - expects JSON responses
+- onboarding baseline detection (`/onboarding/detect-baseline`) can now return `baseline_source` values:
+  - `race_history` (detected race baseline)
+  - `knn_cold_start` (similar-runner estimate when no race history)
+  - `cold_start` (25:00 fallback)
+- readiness responses (`/readiness`) now include additive `components.injury_risk` plus a corresponding explanatory factor entry.
+
+## Core Product Surfaces
+
+- `src/app/(app)/dashboard/page.tsx`
+  - main projection hub (projection, drivers, readiness, weekly metrics, sync status)
+- `src/app/(app)/performance/page.tsx`
+  - deep analytics modules (zones, economy, learning, adjuncts, honest state, accuracy)
+- `src/app/(app)/chat/page.tsx`
+  - thread-based chat with streaming and history restore
+- `src/app/(app)/settings/page.tsx`
+  - baseline/preferences/wearable and account controls
+- `src/app/(app)/event/[eventId]/page.tsx`
+  - event-level projection detail, history, trajectory, explanation
+- `src/app/(app)/driver/[driverName]/page.tsx`
+  - driver-specific trend and contribution detail
+
+## Data Flow in Frontend
+
+1. Middleware resolves auth state from Supabase cookies.
+2. App layout enforces onboarding completion before rendering main pages.
+3. Pages fetch backend resources via `apiFetch`.
+4. Dashboard/performance/event pages map API payloads to UI cards/charts.
+5. Realtime channel updates projection/driver state store on new inserts.
+6. Chat page persists and restores per-user thread IDs from local storage.
+
+## State Management
+
+- `src/stores/projection-store.ts`
+  - current event, projection numbers, drivers, readiness
+  - includes `reset()` for clean sign-out transitions
+- `src/stores/tour-store.ts`
+  - per-user completion keying in local storage
+- `src/hooks/use-auth.ts`
+  - auth/session listener
+  - resets projection/onboarding state on sign-out
+
+## Realtime Contract
+
+- `src/hooks/use-projection-realtime.ts`
+  - subscribes to `projection_state` and `driver_state`
+  - currently listens to `INSERT` events only
+  - filters updates by `user_id` and current event context
+
+## Operational Notes
+
+- Local storage is user-scoped for:
+  - chat thread IDs
+  - notification preferences
+  - tour completion flags
+- Async page loaders include cancellation guards to avoid stale updates after unmount.
+- If backend is unavailable, some surfaces intentionally degrade gracefully.
+
+## Session Checklist (Frontend)
+
+Before making frontend changes:
+
+1. Read root `README.md` and this file.
+2. Confirm impacted route(s), API endpoint(s), and store/hook touchpoints.
+3. Add/update tests where behavior changes.
+4. Verify auth guard and onboarding flow behavior are preserved.
+5. Verify user-scoped persistence is not regressed.
+6. Update this README when architecture, route behavior, state flow, or API contracts change.
+
+## README Delta - Onboarding and Readiness Metadata
+
+- **What changed**: Documented onboarding baseline source option `knn_cold_start` and readiness additive injury-risk response metadata.
+- **Why it changed**: Frontend onboarding and readiness modules should distinguish race-history baselines from similar-runner estimates and surface injury-risk context without breaking existing rendering.
+- **Code touchpoints**: `pirx-backend/app/routers/onboarding.py`, `pirx-backend/app/ml/reference_population.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/app/ml/injury_risk_model.py`.
+- **Data-flow impact**: Onboarding baseline detection, initial projection seeding, and readiness API consumption in frontend views.
+- **Formula/constant changes**: none.
+- **API/schema impact**: `/onboarding/detect-baseline` now may return `baseline_source = "knn_cold_start"`; `/readiness` includes `components.injury_risk` and an injury-risk factor.
+- **Verification**: Backend tests `tests/test_onboarding.py`, `tests/test_services_wiring.py::TestProjectionService`, and `tests/test_readiness.py` pass for new paths.

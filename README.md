@@ -29,16 +29,21 @@ This document is the operational reference for architecture, data flow, ML calcu
   - Ensures `public.users` row exists
 - Primary data gateway: `pirx-backend/app/services/supabase_client.py`
   - Encapsulates reads/writes for activities, projections, drivers, chat, embeddings, tasks, notifications
+- Model selection orchestration: `pirx-backend/app/services/model_orchestrator.py`
+  - Provides projection model decision seam; current policy is deterministic-first fallback-safe serving
 - Async pipeline:
   - Task app and routing: `pirx-backend/app/tasks/__init__.py`
   - Sync ingestion tasks: `pirx-backend/app/tasks/sync_tasks.py`
   - Feature computation task: `pirx-backend/app/tasks/feature_engineering.py`
   - Projection maintenance tasks: `pirx-backend/app/tasks/projection_tasks.py`
+  - ML lifecycle tasks: `pirx-backend/app/tasks/ml_tasks.py`
 - ML modules:
   - Projection core: `pirx-backend/app/ml/projection_engine.py`
   - Baseline estimator: `pirx-backend/app/ml/baseline_estimator.py`
+  - KNN cold-start population model: `pirx-backend/app/ml/reference_population.py`
   - Event scaling: `pirx-backend/app/ml/event_scaling.py`
   - Readiness scoring: `pirx-backend/app/ml/readiness_engine.py`
+  - Injury risk model (RF): `pirx-backend/app/ml/injury_risk_model.py`
   - Trajectory simulation: `pirx-backend/app/ml/trajectory_engine.py`
   - Driver explainability: `pirx-backend/app/ml/shap_explainer.py`
 
@@ -477,7 +482,6 @@ These files define intended system behavior and should be reviewed before major 
 
 ### Critical
 
-- Migration docs are stale (`pirx-backend/migrations/README.md` previously listed only `001`-`004`).
 - Possible schema mismatch if later migrations are not applied (code expects fields introduced after base schema).
 - Token handling path inconsistency: some sync flows may bypass service-level token encryption helpers.
 
@@ -491,6 +495,7 @@ These files define intended system behavior and should be reviewed before major 
   - implementation persists thread/messages through app DB service without graph checkpointer integration
 - Event specificity ambiguity in readiness and driver rendering pathways.
 - Accuracy task event-bias extraction uses list-membership matching by error magnitude, which can mis-attribute biases when duplicate error values exist.
+- Model metrics schema now aligned via `012_model_metrics_alignment.sql` to support `global`/`event_*` accuracy rows and bias-correction payload fields.
 
 ### Medium
 
@@ -543,3 +548,13 @@ For chat issues:
 ## Appendix: Migration Order
 
 See `pirx-backend/migrations/README.md` for the canonical migration order and execution commands.
+
+## README Delta - Model Metrics Alignment
+
+- **What changed**: Added migration-backed alignment for `model_metrics`, updated bias-correction metric payload to include required fields, added a deterministic-first model orchestrator seam in projection service, enabled KNN-backed cold-start baseline estimation for users without race history, added ML lifecycle task scaffolding (LSTM train + Optuna tune), and integrated RF injury-risk component into readiness responses.
+- **Why it changed**: Remove schema/runtime drift that could break production metric writes in accuracy and bias-correction tasks.
+- **Code touchpoints**: `pirx-backend/migrations/012_model_metrics_alignment.sql`, `supabase/migrations/20260311000004_model_metrics_alignment.sql`, `pirx-backend/app/tasks/projection_tasks.py`, `pirx-backend/app/tasks/ml_tasks.py`, `pirx-backend/app/tasks/__init__.py`, `pirx-backend/app/services/model_orchestrator.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/ml/reference_population.py`, `pirx-backend/app/ml/injury_risk_model.py`, `pirx-backend/app/routers/onboarding.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/tests/test_services_wiring.py`, `pirx-backend/tests/test_onboarding.py`, `pirx-backend/tests/test_ml_tasks.py`, `pirx-backend/tests/test_readiness.py`, `pirx-backend/migrations/README.md`.
+- **Data-flow impact**: Scheduled task observability path (`compute_model_accuracy`, `bias_correction`), projection-serving orchestration seam (deterministic output path unchanged), onboarding baseline detection fallback now prefers KNN cold-start estimate before default baseline when race history is absent, readiness response now includes RF injury-risk component, and Celery includes ML lifecycle scaffolding tasks on the `ml` queue.
+- **Formula/constant changes**: Added bounded RF injury-risk probability (0-1) synthetic pretraining inputs and readiness component mapping `injury_risk = (1 - risk_probability) * 100`.
+- **API/schema impact**: `model_metrics` schema now supports `global` and `event_*` model types plus bias-correction-specific fields; `/onboarding/detect-baseline` may return `baseline_source = "knn_cold_start"`; `/readiness` now includes `injury_risk` in `components` and an injury risk factor detail.
+- **Verification**: Ran backend test sets in project venv: `tests/test_onboarding.py`, `tests/test_services_wiring.py::TestProjectionService`, `tests/test_readiness.py`, `tests/test_ml_tasks.py`, `tests/test_accuracy_tasks.py`, and `tests/test_tasks.py::TestBiasCorrectionDetailed` (48 tests passing).

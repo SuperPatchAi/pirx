@@ -377,6 +377,8 @@ class TestBiasCorrectionDetailed:
 
         mock_svc.insert_model_metric.assert_called_once()
         metric_data = mock_svc.insert_model_metric.call_args[0][0]
+        assert metric_data["metric_date"] == "2026-02-20"
+        assert metric_data["model_type"] == "global"
         assert metric_data["metric_type"] == "bias_correction"
         assert metric_data["event"] == "5000"
         assert metric_data["actual_seconds"] == 1250

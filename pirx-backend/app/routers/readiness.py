@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.dependencies import get_current_user
 from app.ml.readiness_engine import ReadinessEngine
+from app.ml.injury_risk_model import InjuryRiskModel
 from app.models.activities import NormalizedActivity
 from app.services.supabase_client import SupabaseService
 
@@ -83,9 +84,27 @@ async def get_readiness(
             factors=[{"name": "No activities synced", "impact": "neutral", "detail": "Sync a wearable to see your readiness score."}],
         )
 
+    injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
+
     return ReadinessResponse(
         score=result.score,
         label=result.label,
-        components=result.components,
-        factors=result.factors,
+        components={
+            **result.components,
+            "injury_risk": round((1.0 - injury_risk_prob) * 100.0, 1),
+        },
+        factors=[
+            *result.factors,
+            {
+                "factor": "Injury risk model",
+                "impact": (
+                    "negative"
+                    if injury_risk_prob >= 0.6
+                    else "neutral"
+                    if injury_risk_prob >= 0.35
+                    else "positive"
+                ),
+                "detail": f"Estimated risk {injury_risk_prob * 100:.1f}%",
+            },
+        ],
     )

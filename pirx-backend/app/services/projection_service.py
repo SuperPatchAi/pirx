@@ -1,10 +1,12 @@
 from app.ml.projection_engine import ProjectionEngine, ProjectionState
 from app.ml.event_scaling import EventScaler
 from app.ml.baseline_estimator import estimate_5k_baseline
+from app.ml.reference_population import estimate_5k_cold_start_knn
 from app.services.supabase_client import SupabaseService
 from app.services.driver_service import DriverService
 from app.services.embedding_service import EmbeddingService
 from app.services.notification_service import NotificationService
+from app.services.model_orchestrator import ModelOrchestrator
 from typing import Optional
 import logging
 
@@ -23,6 +25,7 @@ class ProjectionService:
         self.db = SupabaseService()
         self.driver_service = DriverService()
         self.engine = ProjectionEngine()
+        self.orchestrator = ModelOrchestrator()
 
     def recompute(self, user_id: str, event: str, features: dict) -> Optional[ProjectionState]:
         """Full recompute pipeline for a single event.
@@ -78,6 +81,19 @@ class ProjectionService:
         except Exception:
             previous_state = None
 
+        model_decision = self.orchestrator.select_projection_model(
+            user_id=user_id,
+            event=event,
+            features=features,
+        )
+        if model_decision.model_type != "deterministic":
+            logger.info(
+                "Model '%s' selected for user=%s event=%s but not yet enabled in projection serving; using deterministic fallback",
+                model_decision.model_type,
+                user_id,
+                event,
+            )
+
         new_state, driver_states = self.driver_service.compute_and_store_drivers(
             user_id=user_id,
             event=event,
@@ -125,7 +141,12 @@ class ProjectionService:
         """
         try:
             activities = self.db.get_recent_activities(user_id, days=180)
-            return estimate_5k_baseline(activities)
+            baseline = estimate_5k_baseline(activities)
+            if abs(baseline - 1500.0) < 1:
+                knn_cold_start = estimate_5k_cold_start_knn(activities)
+                if knn_cold_start is not None:
+                    return knn_cold_start
+            return baseline
         except Exception:
             logger.warning("Failed to estimate baseline for user %s, using default", user_id)
             return 1500.0

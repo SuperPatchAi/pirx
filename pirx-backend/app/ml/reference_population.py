@@ -287,3 +287,44 @@ def get_reference_population() -> ReferencePopulation:
     if _population is None:
         _population = ReferencePopulation()
     return _population
+
+
+def estimate_5k_cold_start_knn(activities: list[dict]) -> Optional[float]:
+    """Estimate 5K time from sparse activity history using synthetic neighbors.
+
+    Returns:
+        5K estimate in seconds, or None when insufficient activity data exists.
+    """
+    if not activities:
+        return None
+
+    valid = []
+    for a in activities:
+        dist = float(a.get("distance_meters") or 0)
+        dur = float(a.get("duration_seconds") or 0)
+        if dist < 1600 or dur <= 0:
+            continue
+        pace = a.get("avg_pace_sec_per_km")
+        if pace is None:
+            pace = dur / (dist / 1000) if dist > 0 else None
+        if pace is None:
+            continue
+        pace = float(pace)
+        if not (223 <= pace <= 900):
+            continue
+        valid.append((dist, pace))
+
+    if len(valid) < 3:
+        return None
+
+    best_effort_5k = min(p * 5.0 for _, p in valid)
+    weekly_km = max(10.0, min(180.0, sum(d for d, _ in valid) / 1000.0 / 3.0))
+
+    pop = get_reference_population()
+    neighbors = pop.get_similar_runners(time_5000=best_effort_5k, weekly_km=weekly_km, n=3)
+    if not neighbors:
+        return None
+
+    # Conservative estimate: neighborhood mean slightly slower than nearest fit.
+    knn_est = float(np.mean([n.time_5000 for n in neighbors])) * 1.02
+    return round(knn_est, 2)

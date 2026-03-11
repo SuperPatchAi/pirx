@@ -201,6 +201,7 @@ class TestReadinessWithRealData:
         assert data["label"] in ("Peak", "Good", "Moderate", "Low", "Very Low")
         assert "acwr_balance" in data["components"]
         assert "fatigue_freshness" in data["components"]
+        assert "injury_risk" in data["components"]
 
     @patch("app.routers.readiness.SupabaseService")
     def test_readiness_returns_insufficient_data_when_no_activities(self, mock_cls, client):

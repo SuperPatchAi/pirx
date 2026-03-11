@@ -35,6 +35,7 @@ celery_app.config_from_object(
             "app.tasks.projection_tasks",
             "app.tasks.feature_engineering",
             "app.tasks.accuracy_tasks",
+            "app.tasks.ml_tasks",
             "app.tasks.social_tasks",
         ],
         "task_serializer": "json",
@@ -45,6 +46,7 @@ celery_app.config_from_object(
             "app.tasks.projection_tasks.*": {"queue": "projection"},
             "app.tasks.feature_engineering.*": {"queue": "projection"},
             "app.tasks.accuracy_tasks.*": {"queue": "projection"},
+            "app.tasks.ml_tasks.*": {"queue": "ml"},
             "app.tasks.social_tasks.*": {"queue": "projection"},
             "app.tasks.sync_tasks.*": {"queue": "sync"},
         },
@@ -66,6 +68,16 @@ celery_app.config_from_object(
             "weekly-model-accuracy": {
                 "task": "app.tasks.accuracy_tasks.compute_model_accuracy",
                 "schedule": crontab(hour=5, minute=0, day_of_week=2),
+            },
+            "weekly-lstm-training": {
+                "task": "app.tasks.ml_tasks.train_user_lstm",
+                "schedule": crontab(hour=6, minute=0, day_of_week=4),
+                "args": ("all",),
+            },
+            "weekly-lstm-optuna-tuning": {
+                "task": "app.tasks.ml_tasks.tune_user_lstm",
+                "schedule": crontab(hour=7, minute=0, day_of_week=4),
+                "args": ("all",),
             },
             "race-approaching-daily": {
                 "task": "app.tasks.projection_tasks.check_race_approaching",

@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.dependencies import get_current_user
 from app.services.supabase_client import SupabaseService
+from app.ml.reference_population import estimate_5k_cold_start_knn
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,20 @@ async def detect_baseline(user: dict = Depends(get_current_user)):
                 baseline_source="race_history",
                 detected_races=detected,
             )
+
+    # Cold-start uplift: use KNN estimate from recent non-race running history when available.
+    try:
+        recent = db.get_recent_activities(user_id, days=90)
+    except Exception:
+        recent = []
+    knn_estimate = estimate_5k_cold_start_knn(recent or [])
+    if knn_estimate is not None:
+        return DetectBaselineResponse(
+            baseline_event=COLD_START_EVENT,
+            baseline_time_seconds=knn_estimate,
+            baseline_source="knn_cold_start",
+            detected_races=[],
+        )
 
     return DetectBaselineResponse(
         baseline_event=COLD_START_EVENT,

@@ -347,14 +347,22 @@ def bias_correction() -> dict:
             bias = race_time - projected
 
             if abs(bias) > bias_threshold:
+                race_ts = race.get("timestamp")
+                metric_date = (
+                    race_ts[:10]
+                    if isinstance(race_ts, str) and len(race_ts) >= 10
+                    else datetime.now(timezone.utc).date().isoformat()
+                )
                 db.insert_model_metric({
                     "user_id": user_id,
+                    "metric_date": metric_date,
+                    "model_type": "global",
                     "metric_type": "bias_correction",
                     "event": event,
                     "actual_seconds": race_time,
                     "projected_seconds": projected,
                     "bias_seconds": bias,
-                    "race_timestamp": race.get("timestamp"),
+                    "race_timestamp": race_ts,
                     "computed_at": datetime.now(timezone.utc).isoformat(),
                 })
                 biases_logged += 1

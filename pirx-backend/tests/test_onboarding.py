@@ -77,6 +77,45 @@ class TestDetectBaseline:
         finally:
             _cleanup()
 
+    def test_detect_baseline_knn_cold_start_when_no_races(self):
+        """If no races exist but enough recent runs exist, return KNN cold-start estimate."""
+        client = _make_client()
+        try:
+            with patch("app.routers.onboarding.SupabaseService") as mock_cls:
+                inst = MagicMock()
+                inst.get_race_activities.return_value = []
+                inst.get_recent_activities.return_value = [
+                    {
+                        "distance_meters": 5000,
+                        "duration_seconds": 1350,
+                        "avg_pace_sec_per_km": 270,
+                        "timestamp": "2026-03-01T08:00:00Z",
+                    },
+                    {
+                        "distance_meters": 8000,
+                        "duration_seconds": 2400,
+                        "avg_pace_sec_per_km": 300,
+                        "timestamp": "2026-03-03T08:00:00Z",
+                    },
+                    {
+                        "distance_meters": 10000,
+                        "duration_seconds": 3200,
+                        "avg_pace_sec_per_km": 320,
+                        "timestamp": "2026-03-05T08:00:00Z",
+                    },
+                ]
+                mock_cls.return_value = inst
+
+                r = client.post("/onboarding/detect-baseline")
+                assert r.status_code == 200
+                data = r.json()
+                assert data["baseline_source"] == "knn_cold_start"
+                assert data["baseline_event"] == "5000"
+                assert data["baseline_time_seconds"] > 0
+                assert data["baseline_time_seconds"] != 1500.0
+        finally:
+            _cleanup()
+
     def test_detect_baseline_db_error_fallback(self):
         """If DB throws, should still return cold-start default."""
         client = _make_client()

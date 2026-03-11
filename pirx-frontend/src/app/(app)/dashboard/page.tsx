@@ -191,7 +191,11 @@ export default function DashboardPage() {
   }, [selectedEvent]);
 
   useEffect(() => {
-    loadDashboardData().finally(() => setLoading(false));
+    let cancelled = false;
+    loadDashboardData().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSyncNow = useCallback(async () => {

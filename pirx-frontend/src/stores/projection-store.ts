@@ -24,6 +24,7 @@ interface ProjectionState {
   setProjection: (data: Partial<ProjectionState>) => void;
   setDrivers: (drivers: DriverData[]) => void;
   setReadiness: (score: number, label: string) => void;
+  reset: () => void;
 }
 
 export const useProjectionStore = create<ProjectionState>((set) => ({
@@ -43,4 +44,18 @@ export const useProjectionStore = create<ProjectionState>((set) => ({
   setDrivers: (drivers) => set({ drivers }),
   setReadiness: (score, label) =>
     set({ readinessScore: score, readinessLabel: label }),
+  reset: () =>
+    set({
+      currentEvent: "5000",
+      projectedTimeSeconds: null,
+      rangeLower: null,
+      rangeUpper: null,
+      improvementSeconds: null,
+      twentyOneDayChange: null,
+      volatility: null,
+      lastUpdated: null,
+      drivers: [],
+      readinessScore: null,
+      readinessLabel: null,
+    }),
 }));

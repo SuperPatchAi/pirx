@@ -1158,6 +1158,7 @@ export default function PerformancePage() {
 
   // Initial snapshot/trends load
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       try {
         const events = ["1500", "3000", "5000", "10000"];
@@ -1166,6 +1167,8 @@ export default function PerformancePage() {
           ...projCalls,
           apiFetch("/projection/history?event=5000&days=90"),
         ]);
+
+        if (cancelled) return;
 
         const results = [p1500, p3000, p5000, p10000];
         const rows: SnapshotRow[] = events.map((eventId, i) => {
@@ -1196,7 +1199,7 @@ export default function PerformancePage() {
           }
           return SNAPSHOT[i];
         });
-        setSnapshot(rows);
+        if (!cancelled) setSnapshot(rows);
 
         const p5k = results[2];
         let readinessScore = 0;
@@ -1209,14 +1212,18 @@ export default function PerformancePage() {
           // fallback to default
         }
 
+        if (cancelled) return;
+
         try {
           const bl = await apiFetch("/account/baseline");
-          if (bl && bl.event) {
+          if (!cancelled && bl && bl.event) {
             setBaseline({ event: bl.event, time_seconds: bl.time_seconds ?? 0, race_date: bl.race_date ?? null });
           }
         } catch {
           // baseline not available
         }
+
+        if (cancelled) return;
 
         if (p5k.status === "fulfilled") {
           const p = p5k.value as { total_improvement_seconds?: number; twenty_one_day_change?: number };
@@ -1235,19 +1242,22 @@ export default function PerformancePage() {
             points?: Array<{ date: string; projected_time_seconds?: number; range_low?: number; range_high?: number }>;
           };
           const points = h.history ?? h.points ?? [];
-          setTrendsData(points.map((pt) => ({ date: pt.date, time: pt.projected_time_seconds ?? 0 })));
-          const ranges = points
-            .filter((pt) => pt.range_low != null && pt.range_high != null)
-            .map((pt) => ({ date: pt.date, low: pt.range_low!, high: pt.range_high! }));
-          if (ranges.length > 0) setTrendsRangeData(ranges);
+          if (!cancelled) {
+            setTrendsData(points.map((pt) => ({ date: pt.date, time: pt.projected_time_seconds ?? 0 })));
+            const ranges = points
+              .filter((pt) => pt.range_low != null && pt.range_high != null)
+              .map((pt) => ({ date: pt.date, low: pt.range_low!, high: pt.range_high! }));
+            if (ranges.length > 0) setTrendsRangeData(ranges);
+          }
         }
       } catch {
         // keep empty defaults on failure
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
+    return () => { cancelled = true; };
   }, []);
 
   const lazyFetch = useCallback(

@@ -1,6 +1,9 @@
 import { create } from "zustand";
 
-const STORAGE_KEY = "pirx-tour-completed";
+const STORAGE_KEY_PREFIX = "pirx-tour-completed";
+function storageKey(userId?: string) {
+  return userId ? `${STORAGE_KEY_PREFIX}-${userId}` : STORAGE_KEY_PREFIX;
+}
 
 type TourPhase = "slides" | "spotlight";
 
@@ -11,13 +14,13 @@ interface TourState {
   totalSlides: number;
   totalSpotlights: number;
   startTour: () => void;
-  endTour: () => void;
+  endTour: (userId?: string) => void;
   nextStep: () => void;
   prevStep: () => void;
   skipTour: () => void;
   goToSpotlight: () => void;
-  hasCompleted: () => boolean;
-  resetCompleted: () => void;
+  hasCompleted: (userId?: string) => boolean;
+  resetCompleted: (userId?: string) => void;
 }
 
 export const useTourStore = create<TourState>((set, get) => ({
@@ -30,9 +33,9 @@ export const useTourStore = create<TourState>((set, get) => ({
   startTour: () =>
     set({ isActive: true, phase: "slides", currentStep: 0 }),
 
-  endTour: () => {
+  endTour: (userId?: string) => {
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, "true");
+      localStorage.setItem(storageKey(userId), "true");
     }
     set({ isActive: false, phase: "slides", currentStep: 0 });
   },
@@ -69,14 +72,14 @@ export const useTourStore = create<TourState>((set, get) => ({
     set({ phase: "spotlight", currentStep: 0 });
   },
 
-  hasCompleted: () => {
+  hasCompleted: (userId?: string) => {
     if (typeof window === "undefined") return true;
-    return localStorage.getItem(STORAGE_KEY) === "true";
+    return localStorage.getItem(storageKey(userId)) === "true";
   },
 
-  resetCompleted: () => {
+  resetCompleted: (userId?: string) => {
     if (typeof window !== "undefined") {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey(userId));
     }
   },
 }));

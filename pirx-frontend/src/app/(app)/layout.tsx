@@ -10,13 +10,19 @@ import { useNotifications } from "@/hooks/use-notifications";
 import { apiFetch } from "@/lib/api";
 import { motion } from "framer-motion";
 
+let _onboardingChecked = false;
+
+export function resetOnboardingCheck() {
+  _onboardingChecked = false;
+}
+
 function useOnboardingGate() {
   const pathname = usePathname();
   const router = useRouter();
-  const [checked, setChecked] = useState(false);
+  const [checked, setChecked] = useState(_onboardingChecked);
 
   useEffect(() => {
-    if (pathname.startsWith("/onboarding")) {
+    if (_onboardingChecked || pathname.startsWith("/onboarding")) {
       setChecked(true);
       return;
     }
@@ -32,7 +38,10 @@ function useOnboardingGate() {
       } catch {
         // API unreachable — let user through rather than blocking
       }
-      if (!cancelled) setChecked(true);
+      if (!cancelled) {
+        _onboardingChecked = true;
+        setChecked(true);
+      }
     })();
     return () => { cancelled = true; };
   }, [pathname, router]);

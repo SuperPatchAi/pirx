@@ -356,14 +356,14 @@ function SettingsContent() {
       const data = await apiFetch("/preferences");
       setNotifications(data);
     } catch {
-      const stored = localStorage.getItem("pirx_notification_prefs");
+      const stored = localStorage.getItem(`pirx_notification_prefs_${user?.id}`);
       if (stored) {
         try { setNotifications(JSON.parse(stored)); } catch { /* use defaults */ }
       }
     } finally {
       setNotifLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchAdjuncts = useCallback(async () => {
     try {
@@ -471,7 +471,7 @@ function SettingsContent() {
   ) => {
     const updated = { ...notifications, [key]: checked };
     setNotifications(updated);
-    localStorage.setItem("pirx_notification_prefs", JSON.stringify(updated));
+    localStorage.setItem(`pirx_notification_prefs_${user?.id}`, JSON.stringify(updated));
     try {
       await apiFetch("/preferences", {
         method: "PUT",

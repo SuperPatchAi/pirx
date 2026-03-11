@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { useProjectionStore } from "@/stores/projection-store";
+import { resetOnboardingCheck } from "@/app/(app)/layout";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -21,9 +23,15 @@ export function useAuth() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const newUser = session?.user ?? null;
+      setUser(newUser);
       setLoading(false);
+
+      if (event === "SIGNED_OUT" || !newUser) {
+        useProjectionStore.getState().reset();
+        resetOnboardingCheck();
+      }
     });
 
     return () => subscription.unsubscribe();

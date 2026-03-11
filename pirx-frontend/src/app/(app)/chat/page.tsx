@@ -17,6 +17,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Message {
   id: string;
@@ -35,9 +36,10 @@ const SUGGESTION_CHIPS = [
   { label: "How is my sleep affecting readiness?", icon: Heart },
 ];
 
-const THREAD_KEY = "pirx_chat_thread_id";
+const THREAD_KEY_PREFIX = "pirx_chat_thread_id";
 
 export default function ChatPage() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,24 +48,26 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const threadKey = `${THREAD_KEY_PREFIX}_${user?.id}`;
+
   useEffect(() => {
-    const stored = localStorage.getItem(THREAD_KEY);
+    const stored = localStorage.getItem(threadKey);
     if (stored) setThreadId(stored);
     else setHistoryLoaded(true);
-  }, []);
+  }, [threadKey]);
 
   useEffect(() => {
     if (threadId) {
-      localStorage.setItem(THREAD_KEY, threadId);
+      localStorage.setItem(threadKey, threadId);
     }
-  }, [threadId]);
+  }, [threadId, threadKey]);
 
   const handleNewChat = useCallback(() => {
-    localStorage.removeItem(THREAD_KEY);
+    localStorage.removeItem(threadKey);
     setThreadId(null);
     setMessages([]);
     setHistoryLoaded(true);
-  }, []);
+  }, [threadKey]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,11 +79,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!threadId || historyLoaded) return;
+    let cancelled = false;
     async function loadHistory() {
       try {
         const { apiFetch } = await import("@/lib/api");
         const data = await apiFetch(`/chat/history?thread_id=${threadId}`);
-        if (data.messages && data.messages.length > 0) {
+        if (!cancelled && data.messages && data.messages.length > 0) {
           setMessages(
             data.messages.map(
               (m: {
@@ -102,10 +107,11 @@ export default function ChatPage() {
       } catch {
         /* history load failure is non-critical */
       } finally {
-        setHistoryLoaded(true);
+        if (!cancelled) setHistoryLoaded(true);
       }
     }
     loadHistory();
+    return () => { cancelled = true; };
   }, [threadId, historyLoaded]);
 
   const sendMessage = useCallback(

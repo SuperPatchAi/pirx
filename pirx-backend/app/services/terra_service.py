@@ -207,6 +207,7 @@ class TerraService:
         sleep_score = _first_number(
             terra_sleep,
             [
+                ("data_enrichment", "sleep_score"),
                 ("sleep_score",),
                 ("sleep_data", "sleep_score"),
                 ("sleep_data", "score"),
@@ -235,11 +236,47 @@ class TerraService:
 
         custom_fields = {
             "terra_type": "sleep",
-            "sleep_total_seconds": _first_number(terra_sleep, [("sleep_durations_data", "total_sleep_duration_seconds"), ("sleep_durations_data", "total_sleep_seconds")]),
-            "sleep_deep_seconds": _first_number(terra_sleep, [("sleep_durations_data", "deep_sleep_duration_seconds"), ("sleep_durations_data", "deep_sleep_seconds")]),
-            "sleep_light_seconds": _first_number(terra_sleep, [("sleep_durations_data", "light_sleep_duration_seconds"), ("sleep_durations_data", "light_sleep_seconds")]),
-            "sleep_rem_seconds": _first_number(terra_sleep, [("sleep_durations_data", "rem_sleep_duration_seconds"), ("sleep_durations_data", "rem_sleep_seconds")]),
-            "sleep_awake_seconds": _first_number(terra_sleep, [("sleep_durations_data", "awake_duration_seconds"), ("sleep_durations_data", "awake_seconds")]),
+            "summary_id": metadata.get("summary_id"),
+            "sleep_total_seconds": _first_number(
+                terra_sleep,
+                [
+                    ("sleep_durations_data", "asleep", "duration_asleep_state_seconds"),
+                    ("sleep_durations_data", "total_sleep_duration_seconds"),
+                    ("sleep_durations_data", "total_sleep_seconds"),
+                ],
+            ),
+            "sleep_deep_seconds": _first_number(
+                terra_sleep,
+                [
+                    ("sleep_durations_data", "asleep", "duration_deep_sleep_state_seconds"),
+                    ("sleep_durations_data", "deep_sleep_duration_seconds"),
+                    ("sleep_durations_data", "deep_sleep_seconds"),
+                ],
+            ),
+            "sleep_light_seconds": _first_number(
+                terra_sleep,
+                [
+                    ("sleep_durations_data", "asleep", "duration_light_sleep_state_seconds"),
+                    ("sleep_durations_data", "light_sleep_duration_seconds"),
+                    ("sleep_durations_data", "light_sleep_seconds"),
+                ],
+            ),
+            "sleep_rem_seconds": _first_number(
+                terra_sleep,
+                [
+                    ("sleep_durations_data", "asleep", "duration_REM_sleep_state_seconds"),
+                    ("sleep_durations_data", "rem_sleep_duration_seconds"),
+                    ("sleep_durations_data", "rem_sleep_seconds"),
+                ],
+            ),
+            "sleep_awake_seconds": _first_number(
+                terra_sleep,
+                [
+                    ("sleep_durations_data", "awake", "duration_awake_state_seconds"),
+                    ("sleep_durations_data", "awake_duration_seconds"),
+                    ("sleep_durations_data", "awake_seconds"),
+                ],
+            ),
             "sleep_efficiency": _first_number(terra_sleep, [("sleep_durations_data", "sleep_efficiency"), ("sleep_data", "efficiency")]),
             "source_provider": (metadata.get("provider") or "terra").lower(),
             "raw_sleep_payload": {
@@ -265,6 +302,8 @@ class TerraService:
         timestamp_raw = (
             terra_body.get("timestamp")
             or terra_body.get("measurement_time")
+            or metadata.get("end_time")
+            or metadata.get("start_time")
             or metadata.get("timestamp")
             or metadata.get("measurement_time")
         )
@@ -284,6 +323,8 @@ class TerraService:
                 ("weight",),
             ],
         )
+        if weight_kg is None:
+            weight_kg = _extract_measurement_value(terra_body, {"weight_kg", "weight"})
         body_fat_pct = _first_number(
             terra_body,
             [
@@ -292,6 +333,11 @@ class TerraService:
                 ("body_data", "body_fat_percentage"),
             ],
         )
+        if body_fat_pct is None:
+            body_fat_pct = _extract_measurement_value(
+                terra_body,
+                {"body_fat_percentage", "body_fat", "body_fat_pct"},
+            )
         bmi = _first_number(
             terra_body,
             [
@@ -300,6 +346,8 @@ class TerraService:
                 ("body_data", "bmi"),
             ],
         )
+        if bmi is None:
+            bmi = _extract_measurement_value(terra_body, {"bmi"})
 
         custom_fields = {
             "terra_type": "body",
@@ -307,6 +355,8 @@ class TerraService:
             "body_fat_percentage": float(body_fat_pct) if body_fat_pct is not None else None,
             "bmi": float(bmi) if bmi is not None else None,
             "source_provider": (metadata.get("provider") or "terra").lower(),
+            "metadata_start_time": metadata.get("start_time"),
+            "metadata_end_time": metadata.get("end_time"),
             "raw_body_payload": terra_body,
         }
 
@@ -477,4 +527,43 @@ def _first_number(payload: dict, paths: list[tuple[str, ...]]) -> Optional[float
                 return value
         except Exception:
             continue
+    return None
+
+
+def _extract_measurement_value(payload: dict, keys: set[str]) -> Optional[float]:
+    """Extract metric from Terra measurements arrays using flexible shapes."""
+    measurements_data = payload.get("measurements_data")
+    if not isinstance(measurements_data, dict):
+        return None
+    measurements = measurements_data.get("measurements")
+    if not isinstance(measurements, list):
+        return None
+
+    normalized_keys = {k.lower() for k in keys}
+    for row in measurements:
+        if not isinstance(row, dict):
+            continue
+
+        # Pattern A: {"measurement_type": "weight_kg", "value": 70.2}
+        m_type = row.get("measurement_type")
+        if isinstance(m_type, str) and m_type.lower() in normalized_keys:
+            value = row.get("value")
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except Exception:
+                    pass
+
+        # Pattern B: {"weight_kg": 70.2} or similar key-value rows
+        for key in normalized_keys:
+            value = row.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except Exception:
+                    pass
     return None

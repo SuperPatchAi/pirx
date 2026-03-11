@@ -771,3 +771,33 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none (additive signal integration and explainability only).
 - **API/schema impact**: no schema migration required; `/sync/webhook/terra` now processes `sleep` and `body` types; `/readiness` shape unchanged with additive sleep/body factor detail; frontend continues consuming existing endpoint contracts.
 - **Verification**: Backend tests passed via `./venv/bin/python -m pytest tests/test_terra.py tests/test_readiness.py tests/test_physiology.py` (95 passed). Frontend targeted tests passed via `npm run test:run -- "src/app/(app)/physiology/__tests__/trends-mappers.test.ts" "src/components/home/__tests__/projection-tile.test.tsx"` (3 passed).
+
+## README Delta - Recovery Body Analysis Card
+
+- **What changed**: Added a dedicated `Recovery & Body` section in Performance Analysis carousel, with live physiology metrics and a `Why this number?` explainer.
+- **Why it changed**: Promote sleep/body telemetry from overview-only summary into the primary analysis workflow so users can inspect recovery/body signals alongside drivers, economy, and readiness.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Analysis tab now lazily fetches `/physiology/latest` for `sleep_score`, `resting_hr`, `hrv`, and body composition fields from `custom_fields`.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: ReadLints reports clean diagnostics for updated frontend file.
+
+## README Delta - Terra v5 Sleep/Body Normalization Alignment
+
+- **What changed**: Updated Terra sleep/body normalization to match documented v5 model paths, including `data_enrichment.sleep_score`, nested sleep duration fields under `sleep_durations_data.asleep/awake`, and body metrics extracted from `measurements_data.measurements` array shapes.
+- **Why it changed**: Live webhook payloads were arriving but getting skipped because parser paths did not match provider schema, resulting in empty `physiology` sleep/body rows.
+- **Code touchpoints**: `pirx-backend/app/services/terra_service.py`, `pirx-backend/tests/test_terra.py`.
+- **Data-flow impact**: webhook ingest -> Terra normalization -> `physiology` persistence for sleep/body payloads.
+- **Formula/constant changes**: none.
+- **API/schema impact**: no schema change; normalization path and metadata mapping only.
+- **Verification**: `./venv/bin/python -m pytest tests/test_terra.py tests/test_readiness.py tests/test_physiology.py -q` (95 passed).
+
+## README Delta - Science PDF Full Academic Rebuild
+
+- **What changed**: Rewrote `docs/build_science_pdf.py` from scratch as a proper academic paper generator producing a 12-page two-column PDF with: author block, abstract with keywords, 15 numbered body sections, 79 numbered equations, 20 tables, 3 figures, 7 appendices (formula catalog, module map, implementation status matrix, glossary, non-primary module algorithms, edge-case policies, rollout scenarios), and a references section with in-text citations.
+- **Why it changed**: Prior version had broken section ordering (appendices before body), no real equations (formulas were paraphrased in prose), padding instead of substance, and lacked academic conventions (author block, keywords, equation numbers, in-text citations).
+- **Code touchpoints**: `docs/build_science_pdf.py`, `docs/The_Science_Behind_PIRX.md`, `docs/The_Science_Behind_PIRX.pdf`.
+- **Data-flow impact**: Documentation only; no runtime data-path changes.
+- **Formula/constant changes**: None in code; PDF now contains all 79 equations from README sections 1-9 with exact variable names, constants, and bounds matching the implementation.
+- **API/schema impact**: none.
+- **Verification**: Generated PDF via `./docs/build_science_pdf.sh`; confirmed 12 pages via `pdfinfo`; verified 79 equations, 20 tables, 3 figures, proper section ordering from title page through appendices to references.

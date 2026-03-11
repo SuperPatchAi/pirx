@@ -239,25 +239,41 @@ SAMPLE_TERRA_ACTIVITY = {
 }
 
 SAMPLE_TERRA_SLEEP = {
-    "end_time": "2026-03-09T07:00:00+00:00",
-    "metadata": {"provider": "GARMIN"},
-    "sleep_durations_data": {
-        "total_sleep_duration_seconds": 27000,
-        "deep_sleep_duration_seconds": 4200,
-        "rem_sleep_duration_seconds": 5400,
-        "light_sleep_duration_seconds": 16000,
+    "metadata": {
+        "provider": "GARMIN",
+        "start_time": "2026-03-08T23:15:00+00:00",
+        "end_time": "2026-03-09T07:00:00+00:00",
+        "summary_id": "sleep-summary-123",
     },
-    "sleep_data": {"sleep_score": 86},
+    "data_enrichment": {"sleep_score": 86},
+    "scores": {"sleep": 84},
+    "sleep_durations_data": {
+        "asleep": {
+            "duration_asleep_state_seconds": 27000,
+            "duration_deep_sleep_state_seconds": 4200,
+            "duration_light_sleep_state_seconds": 16000,
+            "duration_REM_sleep_state_seconds": 5400,
+        },
+        "awake": {
+            "duration_awake_state_seconds": 1200,
+        },
+        "sleep_efficiency": 0.91,
+    },
     "heart_rate_data": {"summary": {"resting_hr_bpm": 48, "avg_hrv_sdnn": 61}},
 }
 
 SAMPLE_TERRA_BODY = {
-    "timestamp": "2026-03-09T07:30:00+00:00",
-    "metadata": {"provider": "GARMIN"},
+    "metadata": {
+        "provider": "GARMIN",
+        "start_time": "2026-03-09T07:30:00+00:00",
+        "end_time": "2026-03-09T07:31:00+00:00",
+    },
     "measurements_data": {
-        "weight_kg": 70.2,
-        "body_fat_percentage": 13.8,
-        "bmi": 22.1,
+        "measurements": [
+            {"measurement_type": "weight_kg", "value": 70.2},
+            {"measurement_type": "body_fat_percentage", "value": 13.8},
+            {"measurement_type": "bmi", "value": 22.1},
+        ]
     },
 }
 
@@ -308,6 +324,9 @@ class TestTerraServiceNormalize:
         assert result["resting_hr"] == 48
         assert result["hrv"] == 61.0
         assert result["custom_fields"]["terra_type"] == "sleep"
+        assert result["custom_fields"]["summary_id"] == "sleep-summary-123"
+        assert result["custom_fields"]["sleep_total_seconds"] == 27000.0
+        assert result["custom_fields"]["sleep_efficiency"] == 0.91
 
     def test_normalizes_body_entry(self):
         result = TerraService.normalize_body_entry(SAMPLE_TERRA_BODY)
@@ -315,6 +334,7 @@ class TestTerraServiceNormalize:
         assert result["custom_fields"]["terra_type"] == "body"
         assert result["custom_fields"]["weight_kg"] == 70.2
         assert result["custom_fields"]["body_fat_percentage"] == 13.8
+        assert result["custom_fields"]["bmi"] == 22.1
 
 
 class TestExtractHrZones:

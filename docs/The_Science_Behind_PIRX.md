@@ -1,296 +1,376 @@
-# The Science Behind PiRX
-
-### How a Running App Uses Math, Data, and Smart Computers to Help You Run Faster
-
+---
+title: "The Science Behind PIRX"
+subtitle: "Calculation Stack, ML Components, and Rollout Status"
+author: "PIRX Engineering"
+date: "2026-03-11"
 ---
 
-## What Is PiRX?
+# The Science Behind PIRX
 
-Imagine you had a really smart friend who watched every single run you did. This friend knew your heart rate, your pace, how far you ran, and even how well you slept the night before. Now imagine that friend could look at all of that information and tell you: "Based on everything you've been doing, here's how fast you could race a 5K today."
+## Abstract
 
-That's PiRX.
+PIRX (Performance Intelligence Rx) is a projection-first running performance system that maps training structure to race capability. This paper documents the implemented equations, constants, thresholds, and model orchestration behavior currently present in the repository. It also records ML rollout status across deterministic, KNN, LSTM, Optuna lifecycle, and injury-risk components, with explicit separation between active production path, rollout-gated path, and non-primary/planned paths.
 
-PiRX stands for **Performance Intelligence Rx**. It's an app for runners that takes the data from your watch or fitness tracker and turns it into a single, easy-to-read number: your **Projected Time**. That number is how fast PiRX thinks you could race right now.
+**Keywords:** running performance modeling, projection engine, ACWR, event scaling, model rollout, wearable analytics
 
-But PiRX doesn't just guess. It uses real science. Let's walk through how it works, step by step.
+## Figure 1. End-to-End Data Flow
 
----
-
-## Step 1: Collecting Your Running Data
-
-Every time you go for a run with a GPS watch (like a Garmin or COROS), your watch records a lot of information:
-
-- **How far** you ran (in kilometers or miles)
-- **How fast** you ran (your pace)
-- **Your heart rate** (how hard your heart was working)
-- **How long** you ran
-- **Elevation** (did you run up hills?)
-
-PiRX connects to your watch and pulls all of this data in. It even looks back at the last 6 to 12 months of your running history. That way, it can see the big picture of your training, not just one run.
-
----
-
-## Step 2: Cleaning the Data
-
-Not all data is perfect. Sometimes your GPS signal goes wonky and says you ran a 2-minute mile (that would break a world record!). Sometimes a run gets labeled wrong, like a walk being saved as a run.
-
-Before PiRX does any math, it cleans up your data. Here's what it throws out:
-
-- Runs shorter than 3 minutes or less than 1 mile
-- Runs where the pace is way too fast (faster than any human could actually run)
-- Runs where the pace is way too slow (probably a walk, not a run)
-- Activities that aren't actually runs (like bike rides accidentally saved as runs)
-
-This cleaning step is really important. Research showed that cleaning data this way makes the app's predictions **12% more accurate**. That's a big deal.
-
----
-
-## Step 3: Breaking Your Training Into Five Pieces
-
-Now here's where it gets interesting. PiRX doesn't just look at "how much did you run?" It breaks your training into **five building blocks** called **Drivers**. Each driver measures a different part of what makes you fast:
-
-### 1. Aerobic Base
-This is your engine. It measures how much easy running you've been doing over the last few weeks. Easy running builds the foundation that everything else sits on top of. PiRX looks at your total running distance over the last 7, 21, and 42 days.
-
-### 2. Threshold Density
-This measures how much time you spend running at your "comfortably hard" pace, which scientists call your **lactate threshold**. This is the pace where your legs start to burn. Runners who spend more time near this pace tend to get faster.
-
-### 3. Speed Exposure
-This tracks your really fast running, like sprints and short intervals. Even distance runners need a little bit of speed work. PiRX checks how many minutes per week you spend running at high intensity.
-
-### 4. Load Consistency
-Being consistent matters. If you run 50 miles one week and then only 10 miles the next, that big swing makes it harder for your body to adapt. PiRX measures how steady and smooth your training has been from week to week.
-
-### 5. Running Economy
-Running economy is how efficient you are. Imagine two runners with the same heart rate. If one of them is running faster at that same heart rate, that runner has better economy. PiRX tracks whether your pace at the same heart rate is getting faster over time.
-
-**The key rule**: These five drivers must always add up to your total improvement. If PiRX says you've improved by 15 seconds since your last race, the drivers show you exactly where those 15 seconds came from. Maybe 6 seconds came from more easy running, 5 seconds came from threshold work, and 4 seconds came from better consistency.
-
----
-
-## Step 4: The Baseline Race
-
-Every PiRX projection starts from a real number: an actual race you ran. This is called your **Baseline Race**.
-
-Let's say you ran a 5K in 22 minutes and 30 seconds last October. That becomes your anchor point. PiRX then looks at everything you've done since then and calculates how much faster (or slower) your training supports compared to that race.
-
-If you haven't raced recently, PiRX can estimate a baseline from your hardest training efforts. But it tells you it's less certain about that estimate by widening the range of its prediction.
-
----
-
-## Step 5: The Projection Engine
-
-This is the brain of PiRX. The **Projection Engine** takes your baseline race, adds up the adjustments from all five drivers, and produces your Projected Time.
-
-Here's the simple version of the formula:
-
-```
-Projected Time = Baseline Time
-                 - Aerobic Base improvement
-                 - Threshold improvement
-                 - Speed improvement
-                 - Economy improvement
-                 - Consistency improvement
+```text
+Wearable Sync -> Cleaning -> Feature Engineering -> Projection Recompute
+      |             |                 |                    |
+      v             v                 v                    v
+  activities    valid runs       feature vector      projection_state
+                                                        driver_state
+                                                            |
+                                                            v
+                                       APIs (/projection, /drivers, /readiness)
+                                                            |
+                                                            v
+                                               Frontend + Realtime + Chat
 ```
 
-For example:
-- Baseline 5K: **22:30**
-- Aerobic Base improved by **4 seconds**
-- Threshold improved by **3 seconds**
-- Speed improved by **2 seconds**
-- Economy improved by **1 second**
-- Consistency improved by **2 seconds**
-- **Projected Time: 22:18**
-
-PiRX also gives you a **Supported Range**, which is a window around the Projected Time. Instead of just saying "22:18," it might say "somewhere between 22:10 and 22:26." This range gets narrower when PiRX has more data and your training is consistent. It gets wider when things are uncertain.
-
 ---
 
-## Step 6: Smart Weighting (Recent Training Matters More)
+## 1. Implemented Calculation Stack
 
-PiRX pays more attention to what you did recently than what you did two months ago. It uses a weighting system:
+### 1.1 Data Cleaning and Validation
 
-| Time Window | How Much It Counts |
+The cleaning stage admits only running-relevant activities and applies hard bounds to remove invalid sessions before feature generation.
+
+**Table 1. Cleaning thresholds and gates**
+
+| Signal | Rule |
 |---|---|
-| Last 7 days | 45% |
-| Days 8 through 21 | 35% |
-| Days 22 through 90 | 20% |
+| Allowed activity types | `easy`, `threshold`, `interval`, `race` |
+| Non-race minimums | `duration_seconds >= 180` and `distance_meters >= 1600` |
+| Race minimums | `duration_seconds >= 60` and `distance_meters >= 400` |
+| Pace lower bound | reject when `pace_sec_per_km < 223` |
+| Pace upper bound | reject when `pace_sec_per_km > 900` |
+| Relative pace outlier | reject when `pace_sec_per_km > 1.5 * runner_avg_pace` |
+| Elevation quality gate | reject outdoor `distance_meters > 10000` and `elevation_gain_m == 0` |
 
-This makes sense. A great workout last Tuesday matters more than a great workout in January. But PiRX doesn't ignore the older stuff completely, because long-term fitness takes months to build.
+Table 1 should be interpreted as hard eligibility gates before downstream equations are computed.
 
----
+### 1.2 Feature Engineering Equations
 
-## Step 7: Smoothing Out the Bumps
+Feature engineering computes volume, intensity, efficiency, consistency, and physiology features over rolling windows.
 
-Here's a problem: what if you have one amazing run on a Monday but then a terrible run on Tuesday? Should your Projected Time bounce up and down every day?
+The weighted temporal aggregation used across the pipeline is:
 
-No. PiRX uses something called **volatility dampening**. It blends each new projection with the previous one so the number doesn't jump around. The app only shows you a change when your projection moves by **2 seconds or more**. Anything smaller than that is just noise, not real improvement.
+`weighted_feature_score = 0.45 * W_7d + 0.35 * W_8_21d + 0.20 * W_22_90d`
 
-Think of it like a ship. PiRX doesn't change course for every little wave. It only turns when there's a real shift in direction.
+where:
 
----
+- $W_{7d} = \text{rolling\_distance\_7d}$
+- $W_{8-21d} = \text{rolling\_distance\_21d} / 3$
+- $W_{22-90d} = \text{rolling\_distance\_42d} / 6$
 
-## Step 8: Predicting Across Different Race Distances
+**Table 2. Feature equations**
 
-Let's say your Baseline Race was a 5K. But you also want to know how fast you could run a 10K, or a 1500 meter race. How does PiRX figure that out?
+| Domain | Equation |
+|---|---|
+| Volume | `rolling_distance_7d = sum(distance_meters last 7d)` |
+| Volume | `rolling_distance_21d = sum(distance_meters last 21d)` |
+| Volume | `rolling_distance_42d = sum(distance_meters last 42d)` |
+| Volume | `rolling_distance_90d = sum(distance_meters last 90d)` |
+| Session density | `sessions_per_week = count(activities last 7d)` |
+| Long-run exposure | `long_run_count = count(distance_meters >= 15000 last 42d)` |
+| Intensity zones | `zN_pct = zone_time_N / total_zone_time`, `N in {1..5}` |
+| Threshold density | `threshold_density_min_week = (z4_seconds / 60) / 3` |
+| Speed exposure | `speed_exposure_min_week = (z5_seconds / 60) / 3` |
+| Economy | `matched_hr_band_pace = mean(pace where 140 <= avg_hr <= 155)` |
+| HR drift | `hr_drift_sustained = mean((second_half_pace - first_half_pace)/first_half_pace)` |
+| Pace decay | `late_session_pace_decay = mean((last_quarter_pace - first_half_pace)/first_half_pace)` |
+| Consistency | `weekly_load_stddev = std(sum(distance_meters per week) over 6 weeks)` |
+| Consistency | `block_variance = var(sum(distance_meters per 14d block) over 3 blocks)` |
+| Consistency | `session_density_stability = std(session_count_per_week over 6 weeks)` |
 
-It uses a formula called the **Power Law**, first discovered by a scientist named Peter Riegel in 1981:
+The EWMA ACWR implementation is:
 
+- `acute_alpha = 2 / (acute_days + 1)`
+- `chronic_alpha = 2 / (chronic_days + 1)`
+- `EWMA_t = alpha * load_t + (1 - alpha) * EWMA_(t-1)`
+- `ACWR = acute_load / chronic_load`
+
+with windows:
+
+- `acwr_4w = (7, 28)`
+- `acwr_6w = (7, 42)`
+- `acwr_8w = (7, 56)`
+
+### 1.3 Baseline Estimation (5K Anchor)
+
+PIRX baseline estimation is tiered and uses the first available signal in this order:
+
+1. Race-result detection (+ Riegel conversion when non-5K race)
+2. Sustained hard effort
+3. Discounted p10 pace
+4. Adjusted median pace
+5. Default fallback `1500` seconds
+
+**Table 3. Baseline estimator thresholds**
+
+| Parameter | Value |
+|---|---|
+| `MIN_PACE` | `223 sec/km` |
+| `MAX_PACE` | `900 sec/km` |
+| `MIN_DISTANCE` | `1600 m` |
+| Race HR gate | `avg_hr / estimated_max_hr >= 0.83` |
+| Sustained effort HR gate | `avg_hr / estimated_max_hr >= 0.85` |
+| Tier 3 formula | `tier3 = p10_pace * 5 * 0.96` |
+| Tier 4 formula | `tier4 = median_pace * 5 * 0.80` |
+
+KNN cold-start support is available when baseline defaults and usable history exists through the reference population path.
+
+### 1.4 Projection Engine
+
+Driver scoring and aggregation:
+
+`ratio = value / baseline`, `feature_score = clip(50 * ratio, 0, 100)`
+
+Inverse-direction features use:
+
+`ratio_inverse = 2 - min(ratio, 2)`
+
+Driver weights:
+
+- aerobic_base: `0.30`
+- threshold_density: `0.25`
+- speed_exposure: `0.15`
+- running_economy: `0.15`
+- load_consistency: `0.15`
+
+Projection equations:
+
+- `weighted_sum = sum(driver_score_d * weight_d)`
+- `max_improvement = baseline_time * 0.25`
+- `improvement_factor = (weighted_sum - 50) / 50`
+- `total_improvement_seconds = improvement_factor * max_improvement`
+- `raw_projected = max(baseline_time - total_improvement_seconds, 60)`
+
+Volatility dampening:
+
+`projected = alpha * raw_projected + (1 - alpha) * previous_projected`, with `alpha in [0.3, 0.7]`.
+
+Structural shift threshold:
+
+`abs(delta_projected) >= 2.0 seconds`
+
+Supported range:
+
+`total_pct = 0.015 + min(volatility / projected, 0.05) + (1 - data_quality) * 0.02 + acwr_pct`
+
+where `acwr_pct = 0.01` when `acwr_4w > 1.5` or `acwr_4w < 0.6`, else `0`.
+
+`range_low = projected * (1 - total_pct)`, `range_high = projected * (1 + total_pct)`
+
+Driver contribution decomposition is constrained to equal total improvement exactly (final-driver remainder assignment).
+
+### 1.5 Event Scaling
+
+Core Riegel relation:
+
+`T2 = T1 * (D2 / D1)^k`
+
+with defaults and bounds:
+
+- default `k = 1.06`
+- individualized `k` clamped to `[1.01, 1.15]`
+
+Training-volume adjusted exponent:
+
+`k = max(0.98, 1.06 - 0.005 * ((weekly_km - 40) / 10))`, then `k <= 1.15`
+
+5K boundary phase adjustment:
+
+- crossing to longer event: `k += 0.02`
+- crossing to shorter event: `k -= 0.02`
+
+Environmental penalty:
+
+`multiplier = 1 + 0.0035 * degrees_outside(10, 17.5)`
+
+### 1.6 Readiness and Risk
+
+Readiness score:
+
+`score = 0.30*acwr_balance + 0.25*fatigue_freshness + 0.20*training_recency + 0.15*physiological + 0.10*consistency`
+
+clipped to `[0, 100]`.
+
+Implemented readiness labels:
+
+- `Peak`
+- `Good`
+- `Moderate`
+- `Low`
+- `Very Low`
+
+Injury-risk signal is additive and does not mutate projection state. The random-forest path computes:
+
+- `risk_probability in [0, 1]`
+- `risk_band = low (<0.35), moderate (<0.60), high (>=0.60)`
+
+### 1.7 Trajectory and Scheduled Degradation
+
+Scenario transforms:
+
+- maintain: volume `1.00`, intensity `1.00`, consistency `1.00`
+- push: volume `1.05`, intensity `1.15`, consistency `0.95`
+- ease_off: volume `0.80`, intensity `0.90`, consistency `1.10`
+
+Inactivity structural decay:
+
+- `>10 days`: widen range by 5 percent each side; confidence decrement `0.05` floor `0.1`
+- `>21 days`: status `Declining`; confidence decrement `0.1` floor `0.1`
+
+Figure 2 summarizes serving-path behavior when model selection and fallback logic interact with the projection engine.
+
+## Figure 2. Projection Serving and Fallback Path
+
+```text
+ModelOrchestrator
+    |
+    +--> deterministic (default production path)
+    |
+    +--> lstm selected?
+           |
+           +--> rollout/flag pass -> LSTMInferenceAdapter -> projection override
+           |
+           +--> artifact missing/error -> deterministic fallback
+    |
+    +--> knn selected?
+           |
+           +--> currently feature-flag gated for serving
 ```
-Time at new distance = Time at known distance x (new distance / known distance) ^ exponent
+
+---
+
+## 2. ML Components and Current Status
+
+This section reflects repository state verified against current code paths and migration contracts.
+
+**Table 4. ML component status map**
+
+| Component | Status | Code touchpoints | Role |
+|---|---|---|---|
+| Deterministic projection engine | Implemented and active | `projection_engine.py`, `projection_service.py` | Primary production projection path |
+| KNN cold-start baseline | Implemented and active (baseline fallback stage) | `reference_population.py`, `projection_service.py` | Improves default baseline for sparse history |
+| LSTM inference adapter | Implemented but rollout-gated | `lstm_inference.py`, `model_orchestrator.py`, `projection_service.py` | Optional projection override when active model/artifact exists |
+| Optuna lifecycle + promotion scaffold | Implemented but rollout-gated | `ml_tasks.py`, `013_ml_lifecycle.sql` | Tracks studies/trials and model promotion metadata |
+| Injury risk random-forest | Implemented and active (readiness additive) | `injury_risk_model.py`, `readiness.py` | Readiness risk signal and assessment persistence |
+| LMC module | Implemented, non-primary | `lmc.py` | Alternate distance-time modeling path |
+| SHAP explainer heuristics | Implemented, non-primary | `shap_explainer.py` | Explanation support outside main serving decision |
+
+Table 4 is the canonical implementation-status map for external technical communication and should be kept synchronized with code changes.
+
+### 2.1 Model Lifecycle Persistence
+
+Lifecycle tables are additive and support training/tuning/serving provenance:
+
+- `model_registry`
+- `model_training_jobs`
+- `optuna_studies`
+- `optuna_trials`
+- `model_artifacts`
+- `injury_risk_assessments`
+
+Projection metadata contracts include:
+
+- `model_source`
+- `model_confidence`
+- `fallback_reason`
+
+and `projection_state.model_type` includes:
+
+- `deterministic`
+- `lmc`
+- `knn`
+- `lstm`
+- `gradient_boosting`
+
+## Figure 3. Model Lifecycle Entities
+
+```text
+model_registry (model_family, status, metadata)
+        |
+        +--> model_training_jobs (train/tune job runs)
+                 |
+                 +--> optuna_studies
+                 |       |
+                 |       +--> optuna_trials
+                 |
+                 +--> model_artifacts (weights, metrics, config)
+
+projection_state stores serving metadata:
+  model_type, model_confidence, fallback_reason
 ```
 
-The "exponent" is the magic number. It describes how well you hold your speed as the distance gets longer. A runner who is really good at long distances has a different exponent than a sprinter.
-
-PiRX makes this personal. Instead of using the same exponent for everyone, it figures out **your** exponent based on your training patterns. If you do a lot of easy, long runs, your exponent suggests you'll scale better to longer races. If you do a lot of fast intervals, your exponent says you'll be relatively better at shorter races.
-
-A massive study of over **164,000 runners** and **1.4 million race performances** showed that this personalized approach is **30% more accurate** than using a single fixed number for everyone.
-
 ---
 
-## Step 9: Finding Runners Like You
+## 3. Formula and Constant Quick Reference
 
-When you first start using PiRX, it might not have a lot of data about you yet. So how does it make predictions early on?
+The constants in Table 5 and validation metrics in Table 6 are intended as quick audit references for implementation and release reviews.
 
-It uses a technique called **K-Nearest Neighbors (KNN)**. In plain English, it finds three runners in its database who are most similar to you based on your race times, age, and body type. Then it looks at what happened to those runners when they trained a certain way, and uses that to estimate what will happen to you.
+**Table 5. Constants**
 
-Research showed this method predicts marathon times within **4 minutes and 48 seconds** on average. That's only a **2.4% error**, which is really accurate.
-
-As PiRX collects more of your data over time, it stops leaning on similar runners and builds a model that is completely personal to you.
-
----
-
-## Step 10: Your Personal Brain (The LSTM Model)
-
-After about 8 weeks of data, PiRX trains a small computer brain just for you. This is called an **LSTM** (Long Short-Term Memory) neural network. That sounds complicated, but here's what it means:
-
-An LSTM is a type of artificial intelligence that is great at finding patterns in data that changes over time. It looks at the sequence of your training, not just individual workouts. It notices things like:
-
-- "This runner always improves after 3 weeks of steady mileage."
-- "This runner's pace drops when their sleep is bad for 5 days in a row."
-- "This runner responds best to threshold workouts on Tuesdays."
-
-Each runner gets their own personal model. Research found that **individual models outperform a single model shared by all runners**. Your body is unique, so your model should be too.
-
-The LSTM is trained using a special process called **Optuna**, which tests 60 different setups to find the one that works best for your data.
-
----
-
-## Step 11: Race Readiness
-
-Knowing your Projected Time is great. But are you actually *ready* to race?
-
-PiRX calculates an **Event Readiness** score from 0 to 100 that answers that question. It considers:
-
-- **Structural alignment**: Does your training match what the race demands? (A 1500m race needs speed; a 10K needs endurance)
-- **Specificity**: Have you been doing workouts that simulate race conditions?
-- **Volatility**: Has your training been stable, or has it been all over the place?
-- **Durability**: Can your body hold up under race-day stress?
-
-| Score | What It Means |
+| Constant | Value |
 |---|---|
-| 95-100 | Race Ready |
-| 88-94 | Sharpening (almost there) |
-| 75-87 | Building (still developing) |
-| 60-74 | Foundational (early stages) |
+| Structural shift threshold | `2.0 s` |
+| Max absolute improvement cap | `25% of baseline` |
+| Range base percentage | `1.5%` |
+| Volatility contribution cap | `5%` |
+| Missing-feature uncertainty multiplier | `2% * (1 - data_quality)` |
+| ACWR instability range add | `+1%` outside `[0.6, 1.5]` |
+| Dampening alpha bounds | `[0.3, 0.7]` |
+| Riegel default exponent | `1.06` |
+| Individual exponent bounds | `[1.01, 1.15]` |
+| Readiness RF low/moderate boundary | `<0.35`, `<0.60` |
 
-Readiness is separate from your Projected Time. You could have a great Projected Time but low Readiness because your training has been inconsistent. PiRX shows you both so you can make a smart decision about when to race.
+**Table 6. Accuracy and bias metrics**
 
----
-
-## Step 12: Protecting Against Injury
-
-PiRX also watches out for your safety. It tracks something called the **Acute-to-Chronic Workload Ratio (ACWR)**. This compares how much you ran in the last week to how much you've been running on average over the last month.
-
-| ACWR Range | What It Means |
+| Metric | Equation |
 |---|---|
-| 0.8 to 1.3 | Safe zone. You're training at a healthy level. |
-| Above 1.5 | Danger zone. You've ramped up too fast. Injury risk goes up. |
-| Below 0.6 | Detraining zone. You're not doing enough to maintain fitness. |
-
-When PiRX sees your ACWR getting too high, it widens your Supported Range and lowers your Readiness score. It's telling you: "Slow down. Your body needs to catch up."
-
----
-
-## Step 13: Learning About You Over Time
-
-One of the coolest parts of PiRX is the module called **"What We're Learning About You."** Over months of use, PiRX discovers patterns in your training:
-
-- "You respond best to polarized training" (lots of easy running plus some very hard running, with not much in between)
-- "Your fastest improvements come after 3-week blocks of steady mileage"
-- "Your running economy improves most in the spring"
-
-This isn't coaching. PiRX never tells you what to do. It just shows you what the data says about how your body responds. You and your coach (if you have one) decide what to do with that information.
+| Error | `abs(actual - projected)` |
+| Bias | `actual - projected` |
+| MAE | `mean(errors)` |
+| Bland-Altman lower | `bias_mean - 1.96 * std(biases)` |
+| Bland-Altman upper | `bias_mean + 1.96 * std(biases)` |
 
 ---
 
-## Step 14: Talking to Your Data
+## 4. Verification of ML-Gap Closure Claims
 
-PiRX includes an AI chat feature powered by the same type of technology behind ChatGPT. You can ask it questions in plain English:
+The prior implementation thread reported closing major ML rollout gaps. Repository verification confirms:
 
-- "Why did my projection improve this week?"
-- "How has my threshold work changed over the last month?"
-- "Am I ready for a 10K race?"
+1. Model orchestration seam exists and enforces rollout gating with deterministic fallback.
+2. LSTM inference adapter exists, bounded outputs, and falls back when artifact/model is absent.
+3. Lifecycle migration and persistence paths exist for model registry/jobs/studies/trials/artifacts.
+4. Readiness injury-risk path exists with calibrated probability and persisted assessments.
+5. Rollout observability endpoints exist (`/rollout/config`, `/rollout/metrics`, `/rollout/release-readiness`).
 
-The chat searches through your personal data, finds the most relevant information, and gives you a clear answer using PiRX's own language (Projected Time, Supported Range, Drivers). It never makes up answers. Everything it says comes from your actual data.
-
----
-
-## The Research Behind It All
-
-PiRX isn't built on opinions. Every piece of the system is backed by published scientific studies:
-
-| What PiRX Does | The Science Behind It |
-|---|---|
-| Cleans raw running data | Dash 2024 — data cleaning improved predictions by 12% |
-| Scales times across distances | Riegel 1981 + Blythe & Kiraly 2016 (164,746 runners) |
-| Finds similar runners early on | Lerebourg et al. 2023 — KNN with 2.4% error on marathon prediction |
-| Trains personal AI models | Dash 2024 — individual LSTMs outperform global models |
-| Measures training load response | Zrenner et al. 2021 (6,771 marathon finishers) |
-| Detects training intensity patterns | Qin et al. 2025 (120 runners, polarized vs pyramidal) |
-| Assesses fatigue and readiness | Chang et al. 2023 + Biro et al. 2024 (fatigue classification) |
-| Predicts injury risk | Raju et al. 2026 — Random Forest with 98% accuracy |
-| Handles GPS errors and outliers | Dash 2024 — Huber loss function (robust to bad data) |
-| Validates accuracy | Lerebourg et al. 2023 — Bland-Altman analysis |
+Open caveat: LSTM and Optuna paths remain scaffolded and rollout-gated; deterministic projection remains the default safety rail.
 
 ---
 
-## How PiRX Is Different
+## 5. Reproducible PDF Build (Two-Column)
 
-Most running apps give you a number based on a formula that's the same for everyone. PiRX is different in three big ways:
+The PDF is generated from this markdown using a deterministic HTML+CSS build and Chrome headless print.
 
-**1. It's anchored to a real race.** Your projection starts from an actual performance, not a generic estimate.
+```bash
+./docs/build_science_pdf.sh
+```
 
-**2. It's personal.** After enough data, PiRX builds a model that is 100% unique to you. No two runners get the same model.
+This command emits:
 
-**3. It shows its work.** Those five drivers break down exactly where your improvement comes from, measured in seconds. You never have to wonder "why did my number change?" PiRX tells you.
-
-PiRX doesn't behave like a fitness tracker that gives you a daily score. It behaves more like a financial forecast for your running. It looks at the structural foundation of your training and tells you what that foundation can support right now.
-
----
-
-## In Summary
-
-Here's the full journey of your data through PiRX:
-
-1. Your watch records your run
-2. PiRX pulls the data from your watch
-3. Bad or messy data gets cleaned up
-4. Your training gets broken into five drivers
-5. PiRX compares your current training to your baseline race
-6. Recent training counts more than old training
-7. Small daily changes get smoothed out
-8. A personal AI model learns your unique patterns
-9. Your Projected Time updates when real change happens (2+ seconds)
-10. PiRX scales that projection across race distances
-11. A Readiness score tells you if you're ready to race
-12. Safety checks make sure you're not overtraining
-
-All of this happens automatically, every time you sync a run. You just open the app and see your number.
-
-That's the science behind PiRX.
+- `docs/The_Science_Behind_PIRX.pdf` (final two-column paper)
 
 ---
 
-*PiRX — Performance Intelligence Rx*
-*Your training has a structure. Now you can see it.*
+## 6. References
+
+- Riegel, P. S. (1981). Athletic records and human endurance.
+- Blythe, D. A., and Kiraly, F. J. (2016). Predicting race times from training and race data.
+- Lerebourg et al. (2023). KNN-based marathon prediction from runner profiles.
+- PIRX implementation source of truth: repository modules listed in this document and root `README.md`.
+

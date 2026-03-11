@@ -641,3 +641,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none.
 - **API/schema impact**: New additive endpoint `GET /rollout/release-readiness?days=<1..90>`; no schema changes.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py tests/test_rollout.py -q` in `pirx-backend` (103 passed).
+
+## README Delta - Science PDF Technical Refresh
+
+- **What changed**: Rewrote `docs/The_Science_Behind_PIRX.md` as a technical reference with full implemented calculation catalog, explicit ML component status labels (`implemented and active`, `implemented but rollout-gated`, `non-primary/planned`), figure/table blocks, and added reproducible two-column PDF build tooling (`docs/build_science_pdf.sh`, `docs/science-paper.css`).
+- **Why it changed**: Close documentation gaps between implemented ML rollout work and externally shared science materials, while making PDF generation deterministic and publication-style.
+- **Code touchpoints**: `docs/The_Science_Behind_PIRX.md`, `docs/build_science_pdf.sh`, `docs/science-paper.css`, `docs/The_Science_Behind_PIRX.pdf`.
+- **Data-flow impact**: Documentation only; no runtime data path changes.
+- **Formula/constant changes**: None in code; document now explicitly enumerates implemented formulas/constants and marks rollout-gated logic.
+- **API/schema impact**: none.
+- **Verification**: Generated PDF via `./docs/build_science_pdf.sh` and confirmed artifact output at `docs/The_Science_Behind_PIRX.pdf` using the in-repo build path.

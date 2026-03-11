@@ -301,3 +301,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: none.
 - **Verification**: Backend targeted suites pass with daily fallback path (`97 passed`), and existing frontend rendering paths remain unchanged.
+
+## README Delta - Terra Gap Fixes (Backend-Only, No Frontend Changes)
+
+- **What changed**: Backend-only fixes for 11 Terra integration gaps. No frontend code changes. The fixes ensure the backend now correctly extracts and deduplicates body fat, BMI, VO2max, heart rate, stress/strain, and recovery scores from Terra webhooks, and backfills historical sleep/body/daily data. The readiness endpoint now computes physiological trends properly.
+- **Why it changed**: Frontend surfaces (dashboard Recovery card, performance Recovery card, physiology trends) were already wired to consume `custom_fields.weight_kg`, `custom_fields.body_fat_percentage`, `sleep_score`, `resting_hr`, `hrv` from `/physiology/latest` and `/physiology/trends` endpoints. The backend wasn't populating these fields due to parser mismatches against real Terra data models.
+- **Code touchpoints**: Backend files only (terra_service.py, supabase_client.py, sync_tasks.py, sync.py, readiness.py, terra.py).
+- **Data-flow impact**: No frontend-side data-flow changes. Existing frontend components will automatically display previously-empty recovery and body composition values once the backend correctly populates them.
+- **Formula/constant changes**: none.
+- **API/schema impact**: No API contract changes. Same endpoint shapes; fields that were null before will now contain real values.
+- **Verification**: Full backend suite passes (564 tests). No frontend code modified.

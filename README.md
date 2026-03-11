@@ -811,3 +811,24 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none.
 - **API/schema impact**: no schema changes; additive `daily` handling in existing Terra webhook route.
 - **Verification**: `./venv/bin/python -m pytest tests/test_terra.py tests/test_readiness.py tests/test_physiology.py -q` (97 passed).
+
+## README Delta - Terra Sleep/Body/Daily Gap Fix (11 fixes)
+
+- **What changed**: Fixed 11 gaps between our Terra integration and the official Terra API data models:
+  1. Body `bodyfat_percentage` field-name mismatch (Terra uses no underscore) -- data was silently lost
+  2. Case-sensitivity bug in `_extract_measurement_value` -- uppercase `BMI`, `BMR` from Terra never matched
+  3. Application-level dedup for physiology rows using `summary_id` (sleep) and `start_time+end_time` (daily/body)
+  4. Historical backfill for sleep/body/daily via `GET /v2/sleep`, `/v2/body`, `/v2/daily`
+  5. VO2max extraction from Body and Daily `oxygen_data.vo2max_ml_per_min_per_kg`
+  6. Body heart data extraction via `heart_data.heart_rate_data.summary` (different path than Sleep/Daily)
+  7. Sleep `readiness_data.readiness` field path (was looking for non-existent `.sleep_score`/`.score`)
+  8. Daily `scores.recovery` and `scores.activity` extraction
+  9. Daily `stress_data.avg_stress_level` and `strain_data.strain_level` extraction
+  10. `deauth` and `user_reauth` webhook event handlers to maintain `wearable_connections` state
+  11. Readiness router bug: `FeatureService.compute_all_features()` was called without `user_id`, so physiological trends (`resting_hr_trend`, `hrv_trend`, `sleep_score_trend`) were always `None`
+- **Why it changed**: Cross-referencing our parsers against Terra v5 data models and official event types docs revealed field-name mismatches, missing data paths, no dedup, no historical physiology backfill, and a readiness feature-pipeline disconnect.
+- **Code touchpoints**: `pirx-backend/app/services/terra_service.py`, `pirx-backend/app/services/supabase_client.py`, `pirx-backend/app/tasks/sync_tasks.py`, `pirx-backend/app/routers/sync.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/app/models/terra.py`, `pirx-backend/tests/test_terra.py`, `pirx-backend/tests/test_readiness.py`.
+- **Data-flow impact**: ingest (webhook + backfill) -> normalization -> physiology persistence (with dedup) -> feature engineering (now receives physiological trends in readiness) -> readiness/projection APIs.
+- **Formula/constant changes**: none; data extraction paths only.
+- **API/schema impact**: No schema migration. `TerraWebhookPayload` model now accepts `new_user`, `old_user`, `version` fields. `insert_wearable_physiology` now does upsert-on-match instead of blind insert.
+- **Verification**: `./venv/bin/python -m pytest tests/ -q` (564 passed).

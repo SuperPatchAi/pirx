@@ -137,6 +137,77 @@ def process_activity(user_id: str, raw_payload: dict, source: str = "unknown") -
     return result
 
 
+def _backfill_terra_physiology(
+    db, user_id: str, terra_user_id: str, _settings, start_date, end_date,
+) -> dict:
+    """Backfill sleep, body, and daily physiology data from Terra REST API."""
+    import httpx
+    from app.services.terra_service import TerraService
+
+    headers = {
+        "x-api-key": _settings.terra_api_key,
+        "dev-id": _settings.terra_dev_id,
+    }
+    params_base = {
+        "user_id": terra_user_id,
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "to_webhook": "false",
+    }
+    totals = {"sleep": 0, "body": 0, "daily": 0}
+
+    for data_type, normalizer in [
+        ("sleep", TerraService.normalize_sleep_entry),
+        ("body", TerraService.normalize_body_entry),
+        ("daily", TerraService.normalize_daily_entry),
+    ]:
+        try:
+            with httpx.Client(timeout=30) as http:
+                resp = http.get(
+                    f"https://api.tryterra.co/v2/{data_type}",
+                    headers=headers,
+                    params=params_base,
+                )
+            if resp.status_code != 200:
+                logger.warning(
+                    "Terra backfill %s returned %s for user %s",
+                    data_type, resp.status_code, user_id,
+                )
+                continue
+            entries = resp.json().get("data", [])
+            for raw_entry in entries:
+                try:
+                    normalized = normalizer(raw_entry)
+                    has_data = (
+                        normalized.get("sleep_score") is not None
+                        or normalized.get("resting_hr") is not None
+                        or normalized.get("hrv") is not None
+                    )
+                    custom = normalized.get("custom_fields") or {}
+                    has_body = (
+                        custom.get("weight_kg") is not None
+                        or custom.get("body_fat_percentage") is not None
+                    )
+                    if has_data or has_body:
+                        db.insert_wearable_physiology(user_id, normalized)
+                        totals[data_type] += 1
+                except Exception:
+                    logger.exception(
+                        "Failed to process Terra %s backfill entry for user %s",
+                        data_type, user_id,
+                    )
+        except Exception:
+            logger.exception(
+                "Terra %s backfill request failed for user %s", data_type, user_id,
+            )
+
+    logger.info(
+        "Terra physiology backfill: user=%s sleep=%d body=%d daily=%d",
+        user_id, totals["sleep"], totals["body"], totals["daily"],
+    )
+    return totals
+
+
 @celery_app.task(name="app.tasks.sync_tasks.backfill_history", bind=True)
 def backfill_history(self, user_id: str, provider: str) -> dict:
     try:
@@ -330,6 +401,10 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                             logger.warning("Terra API returned %s for user %s", resp.status_code, user_id)
                 except Exception:
                     logger.exception("Terra backfill failed for user %s provider %s", user_id, provider)
+
+                _backfill_terra_physiology(
+                    db, user_id, terra_user_id, _settings, start_date, end_date,
+                )
 
         if valid > 0:
             from app.tasks.feature_engineering import compute_features

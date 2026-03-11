@@ -244,8 +244,52 @@ class SupabaseService:
         return result.data
 
     def insert_wearable_physiology(self, user_id: str, entry: dict) -> dict:
-        """Insert a physiology row from wearable webhook normalization."""
+        """Insert or update a physiology row from wearable webhook normalization.
+
+        Deduplication follows Terra docs:
+        - Sleep: keyed by summary_id in custom_fields
+        - Daily/Body: keyed by metadata start_time + end_time window in custom_fields
+        If a matching row exists, update it; otherwise insert a new row.
+        """
         payload = {"user_id": user_id, "source": "wearable", **entry}
+        custom = entry.get("custom_fields") or {}
+        terra_type = custom.get("terra_type", "")
+
+        existing = None
+        if terra_type == "sleep" and custom.get("summary_id"):
+            existing = (
+                self.client.table("physiology")
+                .select("entry_id")
+                .eq("user_id", user_id)
+                .filter("custom_fields->>summary_id", "eq", custom["summary_id"])
+                .limit(1)
+                .execute()
+            )
+        elif terra_type in ("daily", "body"):
+            start = custom.get("metadata_start_time")
+            end = custom.get("metadata_end_time")
+            if start and end:
+                existing = (
+                    self.client.table("physiology")
+                    .select("entry_id")
+                    .eq("user_id", user_id)
+                    .filter("custom_fields->>terra_type", "eq", terra_type)
+                    .filter("custom_fields->>metadata_start_time", "eq", start)
+                    .filter("custom_fields->>metadata_end_time", "eq", end)
+                    .limit(1)
+                    .execute()
+                )
+
+        if existing and existing.data:
+            entry_id = existing.data[0]["entry_id"]
+            result = (
+                self.client.table("physiology")
+                .update(payload)
+                .eq("entry_id", entry_id)
+                .execute()
+            )
+            return result.data[0] if result.data else payload
+
         result = self.client.table("physiology").insert(payload).execute()
         return result.data[0] if result.data else payload
 

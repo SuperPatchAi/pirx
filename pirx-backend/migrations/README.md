@@ -74,3 +74,9 @@ psql "$SUPABASE_DB_URL" -f migrations/014_projection_model_metadata.sql
 - **Formula/constant changes**: none.
 - **API/schema impact**: Additive projection metadata; existing `/projection` and `/projection/all` contracts remain backward compatible.
 - **Verification**: Ran targeted suite including `tests/test_projection_endpoints.py` and `tests/test_services_wiring.py`; passing.
+
+## Note - Physiology Dedup (Application-Level, No Migration)
+
+- **What changed**: `insert_wearable_physiology` now performs application-level deduplication before inserting. For sleep payloads it checks `custom_fields->>summary_id`; for daily/body payloads it checks `custom_fields->>terra_type` + `custom_fields->>metadata_start_time` + `custom_fields->>metadata_end_time`. If a matching row exists, it updates instead of inserting.
+- **Why**: Terra docs state daily payloads arrive multiple times per day with updated data, and sleep/activity payloads should be deduped by `summary_id`. No DB migration needed; dedup is done via application-level queries against the JSONB `custom_fields` column.
+- **Schema impact**: None. Uses existing `physiology` table and `custom_fields` JSONB column. Consider adding a partial index on `custom_fields->>terra_type` + timestamps for performance if the table grows large.

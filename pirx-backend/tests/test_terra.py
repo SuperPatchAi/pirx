@@ -270,6 +270,36 @@ SAMPLE_TERRA_BODY = {
     },
     "measurements_data": {
         "measurements": [
+            {
+                "measurement_time": "2026-03-09T07:30:00+00:00",
+                "weight_kg": 70.2,
+                "bodyfat_percentage": 13.8,
+                "BMI": 22.1,
+                "BMR": 1750,
+            },
+        ]
+    },
+    "heart_data": {
+        "heart_rate_data": {
+            "summary": {
+                "resting_hr_bpm": 52,
+                "avg_hrv_sdnn": 58,
+            }
+        }
+    },
+    "oxygen_data": {
+        "vo2max_ml_per_min_per_kg": 52.3,
+    },
+}
+
+SAMPLE_TERRA_BODY_LEGACY = {
+    "metadata": {
+        "provider": "GARMIN",
+        "start_time": "2026-03-09T07:30:00+00:00",
+        "end_time": "2026-03-09T07:31:00+00:00",
+    },
+    "measurements_data": {
+        "measurements": [
             {"measurement_type": "weight_kg", "value": 70.2},
             {"measurement_type": "body_fat_percentage", "value": 13.8},
             {"measurement_type": "bmi", "value": 22.1},
@@ -283,7 +313,7 @@ SAMPLE_TERRA_DAILY = {
         "start_time": "2026-03-09T00:00:00+00:00",
         "end_time": "2026-03-09T23:59:59+00:00",
     },
-    "scores": {"sleep": 79, "recovery": 74},
+    "scores": {"sleep": 79, "recovery": 74, "activity": 82},
     "heart_rate_data": {
         "summary": {
             "resting_hr_bpm": 47,
@@ -293,6 +323,15 @@ SAMPLE_TERRA_DAILY = {
     },
     "data_enrichment": {
         "readiness_score": 76,
+    },
+    "oxygen_data": {
+        "vo2max_ml_per_min_per_kg": 51.8,
+    },
+    "stress_data": {
+        "avg_stress_level": 42,
+    },
+    "strain_data": {
+        "strain_level": 6.5,
     },
 }
 
@@ -355,6 +394,39 @@ class TestTerraServiceNormalize:
         assert result["custom_fields"]["body_fat_percentage"] == 13.8
         assert result["custom_fields"]["bmi"] == 22.1
 
+    def test_body_extracts_heart_data(self):
+        """Gap 6: Body heart data lives under heart_data.heart_rate_data.summary."""
+        result = TerraService.normalize_body_entry(SAMPLE_TERRA_BODY)
+        assert result["resting_hr"] == 52
+        assert result["hrv"] == 58.0
+
+    def test_body_extracts_vo2max(self):
+        """Gap 5: VO2max from oxygen_data."""
+        result = TerraService.normalize_body_entry(SAMPLE_TERRA_BODY)
+        assert result["custom_fields"]["vo2max_ml_per_min_per_kg"] == 52.3
+
+    def test_body_legacy_measurement_type_format(self):
+        """Legacy measurement_type+value pattern still works."""
+        result = TerraService.normalize_body_entry(SAMPLE_TERRA_BODY_LEGACY)
+        assert result["custom_fields"]["weight_kg"] == 70.2
+        assert result["custom_fields"]["body_fat_percentage"] == 13.8
+        assert result["custom_fields"]["bmi"] == 22.1
+
+    def test_body_real_terra_flat_keys(self):
+        """Gap 1+2: Real Terra MeasurementDataSample uses flat keys with bodyfat_percentage and BMI."""
+        body = {
+            "metadata": {"provider": "GARMIN", "start_time": "2026-03-09T00:00:00+00:00", "end_time": "2026-03-09T23:59:59+00:00"},
+            "measurements_data": {
+                "measurements": [
+                    {"measurement_time": "2026-03-09T07:00:00+00:00", "weight_kg": 72.5, "bodyfat_percentage": 15.2, "BMI": 23.1},
+                ]
+            },
+        }
+        result = TerraService.normalize_body_entry(body)
+        assert result["custom_fields"]["weight_kg"] == 72.5
+        assert result["custom_fields"]["body_fat_percentage"] == 15.2
+        assert result["custom_fields"]["bmi"] == 23.1
+
     def test_normalizes_daily_entry(self):
         result = TerraService.normalize_daily_entry(SAMPLE_TERRA_DAILY)
         assert result["sleep_score"] == 79.0
@@ -362,6 +434,32 @@ class TestTerraServiceNormalize:
         assert result["hrv"] == 63.0
         assert result["custom_fields"]["terra_type"] == "daily"
         assert result["custom_fields"]["daily_window_key"] == "2026-03-09T00:00:00+00:00|2026-03-09T23:59:59+00:00"
+
+    def test_daily_extracts_recovery_and_activity_scores(self):
+        """Gap 8: scores.recovery and scores.activity from Daily."""
+        result = TerraService.normalize_daily_entry(SAMPLE_TERRA_DAILY)
+        assert result["custom_fields"]["daily_recovery_score_from_scores"] == 74.0
+        assert result["custom_fields"]["daily_activity_score"] == 82.0
+
+    def test_daily_extracts_vo2max(self):
+        """Gap 5: VO2max from Daily oxygen_data."""
+        result = TerraService.normalize_daily_entry(SAMPLE_TERRA_DAILY)
+        assert result["custom_fields"]["vo2max_ml_per_min_per_kg"] == 51.8
+
+    def test_daily_extracts_stress_and_strain(self):
+        """Gap 9: stress and strain from Daily."""
+        result = TerraService.normalize_daily_entry(SAMPLE_TERRA_DAILY)
+        assert result["custom_fields"]["avg_stress_level"] == 42.0
+        assert result["custom_fields"]["strain_level"] == 6.5
+
+    def test_sleep_readiness_data_readiness_field(self):
+        """Gap 7: readiness_data.readiness is the correct Terra field."""
+        sleep_payload = {
+            "metadata": {"provider": "GARMIN", "start_time": "2026-03-08T23:00:00+00:00", "end_time": "2026-03-09T06:30:00+00:00"},
+            "readiness_data": {"readiness": 88, "recovery_level": 3},
+        }
+        result = TerraService.normalize_sleep_entry(sleep_payload)
+        assert result["sleep_score"] == 88.0
 
 
 class TestExtractHrZones:
@@ -555,6 +653,51 @@ class TestTerraWebhookEndpoint:
         response = client.post("/sync/webhook/terra", json=payload)
         assert response.status_code == 200
         mock_db.insert_wearable_physiology.assert_called_once()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_deauth_deactivates_connection(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        mock_update_chain = MagicMock()
+        mock_db.client.table.return_value.update.return_value = mock_update_chain
+        mock_update_chain.eq.return_value = mock_update_chain
+        mock_update_chain.execute.return_value = MagicMock(data=[])
+        payload = {
+            "type": "deauth",
+            "user": {
+                "user_id": "terra-123",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.client.table.assert_called_with("wearable_connections")
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_user_reauth_updates_connection(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        payload = {
+            "type": "user_reauth",
+            "old_user": {
+                "user_id": "terra-old-123",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "new_user": {
+                "user_id": "terra-new-789",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "status": "warning",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.client.table.assert_called_with("wearable_connections")
 
     def test_terra_webhook_rejects_invalid_signature(self, client):
         payload = {

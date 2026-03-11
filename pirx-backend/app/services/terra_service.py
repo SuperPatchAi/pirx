@@ -211,6 +211,7 @@ class TerraService:
                 ("sleep_score",),
                 ("sleep_data", "sleep_score"),
                 ("sleep_data", "score"),
+                ("readiness_data", "readiness"),
                 ("readiness_data", "sleep_score"),
                 ("readiness_data", "score"),
                 ("scores", "sleep"),
@@ -328,6 +329,7 @@ class TerraService:
         body_fat_pct = _first_number(
             terra_body,
             [
+                ("measurements_data", "bodyfat_percentage"),
                 ("measurements_data", "body_fat_percentage"),
                 ("body_composition_data", "body_fat_percentage"),
                 ("body_data", "body_fat_percentage"),
@@ -336,7 +338,7 @@ class TerraService:
         if body_fat_pct is None:
             body_fat_pct = _extract_measurement_value(
                 terra_body,
-                {"body_fat_percentage", "body_fat", "body_fat_pct"},
+                {"bodyfat_percentage", "body_fat_percentage", "body_fat", "body_fat_pct"},
             )
         bmi = _first_number(
             terra_body,
@@ -349,11 +351,35 @@ class TerraService:
         if bmi is None:
             bmi = _extract_measurement_value(terra_body, {"bmi"})
 
+        resting_hr = _first_number(
+            terra_body,
+            [
+                ("heart_data", "heart_rate_data", "summary", "resting_hr_bpm"),
+                ("heart_rate_data", "summary", "resting_hr_bpm"),
+            ],
+        )
+        hrv = _first_number(
+            terra_body,
+            [
+                ("heart_data", "heart_rate_data", "summary", "avg_hrv_sdnn"),
+                ("heart_data", "heart_rate_data", "summary", "avg_hrv_rmssd"),
+                ("heart_rate_data", "summary", "avg_hrv_sdnn"),
+                ("heart_rate_data", "summary", "avg_hrv_rmssd"),
+            ],
+        )
+        vo2max = _first_number(
+            terra_body,
+            [
+                ("oxygen_data", "vo2max_ml_per_min_per_kg"),
+            ],
+        )
+
         custom_fields = {
             "terra_type": "body",
             "weight_kg": float(weight_kg) if weight_kg is not None else None,
             "body_fat_percentage": float(body_fat_pct) if body_fat_pct is not None else None,
             "bmi": float(bmi) if bmi is not None else None,
+            "vo2max_ml_per_min_per_kg": float(vo2max) if vo2max is not None else None,
             "source_provider": (metadata.get("provider") or "terra").lower(),
             "metadata_start_time": metadata.get("start_time"),
             "metadata_end_time": metadata.get("end_time"),
@@ -363,6 +389,8 @@ class TerraService:
         return {
             "timestamp": ts.isoformat(),
             "source": "wearable",
+            "resting_hr": int(resting_hr) if resting_hr is not None else None,
+            "hrv": float(hrv) if hrv is not None else None,
             "custom_fields": custom_fields,
         }
 
@@ -421,7 +449,23 @@ class TerraService:
             ],
         )
 
-        # Daily payloads are uniquely keyed by metadata start/end window in Terra docs.
+        vo2max = _first_number(
+            terra_daily,
+            [
+                ("oxygen_data", "vo2max_ml_per_min_per_kg"),
+            ],
+        )
+        stress_data = (
+            terra_daily.get("stress_data", {})
+            if isinstance(terra_daily.get("stress_data"), dict)
+            else {}
+        )
+        strain_data = (
+            terra_daily.get("strain_data", {})
+            if isinstance(terra_daily.get("strain_data"), dict)
+            else {}
+        )
+
         start_time = metadata.get("start_time")
         end_time = metadata.get("end_time")
         window_key = f"{start_time}|{end_time}" if start_time and end_time else None
@@ -434,6 +478,11 @@ class TerraService:
                 {"data_enrichment": enrichment},
                 [("data_enrichment", "readiness_score")],
             ),
+            "daily_activity_score": _first_number({"scores": scores}, [("scores", "activity")]),
+            "daily_recovery_score_from_scores": _first_number({"scores": scores}, [("scores", "recovery")]),
+            "vo2max_ml_per_min_per_kg": float(vo2max) if vo2max is not None else None,
+            "avg_stress_level": _first_number({"stress_data": stress_data}, [("stress_data", "avg_stress_level")]),
+            "strain_level": _first_number({"strain_data": strain_data}, [("strain_data", "strain_level")]),
             "source_provider": (metadata.get("provider") or "terra").lower(),
             "metadata_start_time": start_time,
             "metadata_end_time": end_time,
@@ -643,14 +692,15 @@ def _extract_measurement_value(payload: dict, keys: set[str]) -> Optional[float]
                 except Exception:
                     pass
 
-        # Pattern B: {"weight_kg": 70.2} or similar key-value rows
-        for key in normalized_keys:
-            value = row.get(key)
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str):
-                try:
+        # Pattern B: {"weight_kg": 70.2} or {"BMI": 22.4} -- case-insensitive match
+        for row_key in row:
+            if row_key.lower() in normalized_keys:
+                value = row[row_key]
+                if isinstance(value, (int, float)):
                     return float(value)
-                except Exception:
-                    pass
+                if isinstance(value, str):
+                    try:
+                        return float(value)
+                    except Exception:
+                        pass
     return None

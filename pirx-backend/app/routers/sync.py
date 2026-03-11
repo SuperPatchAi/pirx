@@ -336,6 +336,48 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to queue feature engineering after Terra body for user %s", user_id)
 
+    elif payload.type == "deauth" and payload.user:
+        logger.info(
+            "Terra deauth: terra_user=%s provider=%s",
+            payload.user.user_id,
+            payload.user.provider,
+        )
+        if payload.user.reference_id:
+            try:
+                db = SupabaseService()
+                provider_name = (payload.user.provider or "terra").lower()
+                db.client.table("wearable_connections").update(
+                    {"is_active": False, "sync_status": "disconnected"}
+                ).eq("user_id", payload.user.reference_id).eq(
+                    "provider", provider_name
+                ).execute()
+            except Exception:
+                logger.exception("Failed to deactivate Terra connection on deauth")
+
+    elif payload.type == "user_reauth" and payload.new_user and payload.old_user:
+        logger.info(
+            "Terra user_reauth: old=%s new=%s provider=%s",
+            payload.old_user.user_id,
+            payload.new_user.user_id,
+            payload.new_user.provider,
+        )
+        ref_id = payload.new_user.reference_id or payload.old_user.reference_id
+        if ref_id:
+            try:
+                db = SupabaseService()
+                provider_name = (payload.new_user.provider or "terra").lower()
+                db.client.table("wearable_connections").upsert(
+                    {
+                        "user_id": ref_id,
+                        "provider": provider_name,
+                        "terra_user_id": payload.new_user.user_id,
+                        "is_active": True,
+                    },
+                    on_conflict="user_id,provider",
+                ).execute()
+            except Exception:
+                logger.exception("Failed to update Terra connection on user_reauth")
+
     elif payload.type == "daily" and payload.data and payload.user and payload.user.reference_id:
         user_id = payload.user.reference_id
         db = SupabaseService()

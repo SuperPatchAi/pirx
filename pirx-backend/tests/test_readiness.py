@@ -218,6 +218,29 @@ class TestReadinessWithRealData:
 
     @patch("app.services.feature_service.FeatureService.compute_all_features")
     @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_passes_user_id_to_feature_service(self, mock_db_cls, mock_feat_fn, client):
+        """Gap 11: FeatureService must receive user_id so physiological trends are computed."""
+        mock_db = MagicMock()
+        mock_db.get_recent_activities.return_value = [
+            {
+                "timestamp": "2026-03-05T08:00:00+00:00",
+                "duration_seconds": 2400,
+                "distance_meters": 8000,
+                "avg_hr": 148,
+                "activity_type": "easy",
+            },
+        ]
+        mock_db.get_recent_physiology.return_value = [{"sleep_score": 80}]
+        mock_db_cls.return_value = mock_db
+        mock_feat_fn.return_value = {"acwr_4w": 1.0, "weekly_load_stddev": 3000, "session_density_stability": 0.8}
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        call_kwargs = mock_feat_fn.call_args
+        assert call_kwargs.kwargs.get("user_id") == "test-user"
+
+    @patch("app.services.feature_service.FeatureService.compute_all_features")
+    @patch("app.routers.readiness.SupabaseService")
     def test_readiness_enriches_sleep_and_body_factors(self, mock_db_cls, mock_feat_fn, client):
         mock_db = MagicMock()
         mock_db.get_recent_activities.return_value = [

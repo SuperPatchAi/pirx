@@ -36,7 +36,7 @@ async def get_readiness(
                 a.timestamp = a.timestamp.replace(tzinfo=None)
 
         from app.services.feature_service import FeatureService
-        features = FeatureService.compute_all_features(activities)
+        features = FeatureService.compute_all_features(activities, user_id=user["user_id"])
 
         now_utc = datetime.now(timezone.utc)
         now_naive = now_utc.replace(tzinfo=None)

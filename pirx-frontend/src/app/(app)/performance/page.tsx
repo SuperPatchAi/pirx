@@ -1130,6 +1130,12 @@ export default function PerformancePage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [fetchedTabs, setFetchedTabs] = useState<Set<string>>(new Set());
   const [baseline, setBaseline] = useState<{ event: string; time_seconds: number; race_date: string | null } | null>(null);
+  const [modelRiskMeta, setModelRiskMeta] = useState<{
+    modelSource: string | null;
+    modelConfidence: number | null;
+    fallbackReason: string | null;
+    injuryRiskScore: number | null;
+  }>({ modelSource: null, modelConfidence: null, fallbackReason: null, injuryRiskScore: null });
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -1207,6 +1213,12 @@ export default function PerformancePage() {
           const readinessRes = await apiFetch("/readiness");
           if (readinessRes && typeof readinessRes.score === "number") {
             readinessScore = readinessRes.score;
+            const components = readinessRes.components as Record<string, unknown> | undefined;
+            const injuryRiskVal = components?.injury_risk;
+            setModelRiskMeta((prev) => ({
+              ...prev,
+              injuryRiskScore: typeof injuryRiskVal === "number" ? injuryRiskVal : Number(injuryRiskVal ?? NaN) || null,
+            }));
           }
         } catch {
           // fallback to default
@@ -1226,12 +1238,24 @@ export default function PerformancePage() {
         if (cancelled) return;
 
         if (p5k.status === "fulfilled") {
-          const p = p5k.value as { total_improvement_seconds?: number; twenty_one_day_change?: number };
+          const p = p5k.value as {
+            total_improvement_seconds?: number;
+            twenty_one_day_change?: number;
+            model_source?: string;
+            model_confidence?: number;
+            fallback_reason?: string;
+          };
           setSummary({
             improvement: p.total_improvement_seconds ?? 0,
             change21d: p.twenty_one_day_change ?? 0,
             readiness: readinessScore,
           });
+          setModelRiskMeta((prev) => ({
+            ...prev,
+            modelSource: p.model_source ?? null,
+            modelConfidence: typeof p.model_confidence === "number" ? p.model_confidence : null,
+            fallbackReason: p.fallback_reason ?? null,
+          }));
         } else {
           setSummary((prev) => ({ ...prev, readiness: readinessScore }));
         }
@@ -1489,6 +1513,34 @@ export default function PerformancePage() {
                   </div>
                 </div>
                 {baseline && <Badge variant="secondary">Active</Badge>}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardContent className="p-4 space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Model & Risk</p>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Projection Source</p>
+                  <p className="font-medium">{modelRiskMeta.modelSource ?? "deterministic"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Model Confidence</p>
+                  <p className="font-medium tabular-nums">
+                    {modelRiskMeta.modelConfidence != null ? `${Math.round(modelRiskMeta.modelConfidence * 100)}%` : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Injury Risk Readiness</p>
+                  <p className="font-medium tabular-nums">
+                    {modelRiskMeta.injuryRiskScore != null ? `${Math.round(modelRiskMeta.injuryRiskScore)}/100` : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fallback Reason</p>
+                  <p className="font-medium">{modelRiskMeta.fallbackReason ?? "none"}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

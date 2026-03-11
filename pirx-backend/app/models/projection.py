@@ -14,6 +14,9 @@ class ProjectionResponse(BaseModel):
     total_improvement_seconds: float
     volatility: float
     last_updated: Optional[str] = None
+    model_source: Optional[str] = None
+    model_confidence: Optional[float] = None
+    fallback_reason: Optional[str] = None
 
 
 class ProjectionHistoryPoint(BaseModel):

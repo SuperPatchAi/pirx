@@ -272,6 +272,9 @@ class TestProjectionService:
 
         assert state is not None
         mock_compute.assert_called_once()
+        kwargs = mock_compute.call_args.kwargs
+        assert kwargs["model_type"] == "deterministic"
+        assert kwargs["fallback_reason"] == "fallback_from_lstm"
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_recompute_first_projection(self, mock_sb):

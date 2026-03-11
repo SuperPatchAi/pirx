@@ -41,6 +41,9 @@ def _mock_projection(event: str) -> ProjectionResponse:
         total_improvement_seconds=0,
         volatility=0,
         last_updated=None,
+        model_source=None,
+        model_confidence=None,
+        fallback_reason=None,
     )
 
 
@@ -80,6 +83,9 @@ async def get_projection(
             total_improvement_seconds=improvement,
             volatility=volatility,
             last_updated=projection.get("computed_at"),
+            model_source=projection.get("model_type"),
+            model_confidence=projection.get("confidence_score"),
+            fallback_reason=projection.get("fallback_reason"),
         )
 
     return _mock_projection(event)
@@ -254,6 +260,9 @@ async def get_all_projections(user: dict = Depends(get_current_user)):
                     "supported_range_high": projection.get("range_high_seconds", midpoint * 1.03),
                     "total_improvement_seconds": projection.get("baseline_seconds", midpoint + 78) - midpoint,
                     "twenty_one_day_change": projection.get("twenty_one_day_change", 0),
+                    "model_source": projection.get("model_type"),
+                    "model_confidence": projection.get("confidence_score"),
+                    "fallback_reason": projection.get("fallback_reason"),
                 })
         except Exception:
             pass

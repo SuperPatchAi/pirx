@@ -1,6 +1,7 @@
 """Supabase client singleton for backend database operations."""
 
 from functools import lru_cache
+from datetime import datetime, timezone
 
 from supabase import Client, create_client
 
@@ -337,6 +338,69 @@ class SupabaseService:
 
     def insert_model_metric(self, data: dict) -> dict:
         result = self.client.table("model_metrics").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    # --- Model Lifecycle ---
+
+    def create_model_registry(self, data: dict) -> dict:
+        result = self.client.table("model_registry").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def update_model_registry_status(self, model_id: str, status: str) -> dict:
+        result = (
+            self.client.table("model_registry")
+            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("model_id", model_id)
+            .execute()
+        )
+        return result.data[0] if result.data else {"model_id": model_id, "status": status}
+
+    def get_active_model(self, user_id: str, event: str | None = None) -> dict | None:
+        query = (
+            self.client.table("model_registry")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "active")
+        )
+        if event:
+            query = query.eq("event", event)
+        result = query.order("created_at", desc=True).limit(1).execute()
+        return result.data[0] if result.data else None
+
+    def create_model_training_job(self, data: dict) -> dict:
+        result = self.client.table("model_training_jobs").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def update_model_training_job(self, job_id: str, status: str, error_message: str | None = None) -> dict:
+        payload: dict = {"status": status}
+        if status == "running":
+            payload["started_at"] = datetime.now(timezone.utc).isoformat()
+        elif status in ("completed", "failed", "cancelled"):
+            payload["finished_at"] = datetime.now(timezone.utc).isoformat()
+        if error_message:
+            payload["error_message"] = error_message
+        result = (
+            self.client.table("model_training_jobs")
+            .update(payload)
+            .eq("job_id", job_id)
+            .execute()
+        )
+        return result.data[0] if result.data else {"job_id": job_id, **payload}
+
+    def create_optuna_study(self, data: dict) -> dict:
+        result = self.client.table("optuna_studies").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def create_optuna_trial(self, data: dict) -> dict:
+        result = self.client.table("optuna_trials").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def add_model_artifact(self, data: dict) -> dict:
+        result = self.client.table("model_artifacts").insert(data).execute()
+        return result.data[0] if result.data else data
+
+    def insert_injury_risk_assessment(self, data: dict) -> dict:
+        result = self.client.table("injury_risk_assessments").insert(data).execute()
         return result.data[0] if result.data else data
 
     # --- Chat Threads ---

@@ -22,6 +22,8 @@ class DriverService:
         baseline_time_s: float,
         features: dict,
         previous_projection=None,
+        model_type: str = "deterministic",
+        fallback_reason: str | None = None,
     ) -> tuple:
         """Compute projection + drivers and store to DB.
 
@@ -83,6 +85,8 @@ class DriverService:
             proj_result = self.db.insert_projection({
                 "user_id": user_id,
                 "event": event,
+                "model_type": model_type,
+                "fallback_reason": fallback_reason,
                 "midpoint_seconds": projection_state.projected_time_seconds,
                 "range_low_seconds": projection_state.supported_range_low,
                 "range_high_seconds": projection_state.supported_range_high,

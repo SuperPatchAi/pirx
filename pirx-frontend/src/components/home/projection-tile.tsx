@@ -11,6 +11,8 @@ interface ProjectionTileProps {
   range: string;
   improvementSeconds: number;
   twentyOneDayChange: number;
+  modelSource?: string | null;
+  fallbackReason?: string | null;
 }
 
 interface ExplainerData {
@@ -45,6 +47,8 @@ export function ProjectionTile({
   range,
   improvementSeconds,
   twentyOneDayChange,
+  modelSource,
+  fallbackReason,
 }: ProjectionTileProps) {
   const [showExplainer, setShowExplainer] = useState(false);
   const [explainerData, setExplainerData] = useState<ExplainerData | null>(null);
@@ -95,6 +99,19 @@ export function ProjectionTile({
               </span>
             )}
           </div>
+
+          {(modelSource || fallbackReason) && (
+            <div className="flex items-center gap-2">
+              {modelSource && (
+                <span className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {modelSource}
+                </span>
+              )}
+              {fallbackReason && (
+                <span className="text-[10px] text-muted-foreground/80">{fallbackReason}</span>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="text-5xl font-extrabold tabular-nums tracking-tight text-green-500 leading-none">

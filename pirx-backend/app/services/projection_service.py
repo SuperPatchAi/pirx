@@ -86,6 +86,8 @@ class ProjectionService:
             event=event,
             features=features,
         )
+        serving_model_type = model_decision.model_type
+        fallback_reason = None
         if model_decision.model_type != "deterministic":
             logger.info(
                 "Model '%s' selected for user=%s event=%s but not yet enabled in projection serving; using deterministic fallback",
@@ -93,6 +95,8 @@ class ProjectionService:
                 user_id,
                 event,
             )
+            serving_model_type = "deterministic"
+            fallback_reason = f"fallback_from_{model_decision.model_type}"
 
         new_state, driver_states = self.driver_service.compute_and_store_drivers(
             user_id=user_id,
@@ -100,6 +104,8 @@ class ProjectionService:
             baseline_time_s=baseline_time,
             features=features,
             previous_projection=previous_state,
+            model_type=serving_model_type,
+            fallback_reason=fallback_reason,
         )
 
         if self.engine.check_structural_shift(new_state, previous_state):

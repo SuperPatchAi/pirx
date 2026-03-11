@@ -239,6 +239,8 @@ export default function DashboardPage() {
     : EMPTY_PROJECTION.supported_range;
   const improvement = (projection?.total_improvement_seconds as number) ?? EMPTY_PROJECTION.total_improvement_seconds;
   const change21d = (projection?.twenty_one_day_change as number) ?? EMPTY_PROJECTION.twenty_one_day_change;
+  const modelSource = (projection?.model_source as string | undefined) ?? null;
+  const fallbackReason = (projection?.fallback_reason as string | undefined) ?? null;
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -258,6 +260,8 @@ export default function DashboardPage() {
             range={projRange}
             improvementSeconds={improvement}
             twentyOneDayChange={change21d}
+            modelSource={modelSource}
+            fallbackReason={fallbackReason}
           />
           <Button
             variant="ghost"

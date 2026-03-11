@@ -64,6 +64,11 @@ Required frontend env vars:
   - `knn_cold_start` (similar-runner estimate when no race history)
   - `cold_start` (25:00 fallback)
 - readiness responses (`/readiness`) now include additive `components.injury_risk` plus a corresponding explanatory factor entry.
+- projection responses now may include optional metadata:
+  - `model_source`
+  - `model_confidence`
+  - `fallback_reason`
+  and frontend dashboard/performance surfaces should render these fields only when present.
 
 ## Core Product Surfaces
 
@@ -129,10 +134,20 @@ Before making frontend changes:
 
 ## README Delta - Onboarding and Readiness Metadata
 
-- **What changed**: Documented onboarding baseline source option `knn_cold_start` and readiness additive injury-risk response metadata.
-- **Why it changed**: Frontend onboarding and readiness modules should distinguish race-history baselines from similar-runner estimates and surface injury-risk context without breaking existing rendering.
-- **Code touchpoints**: `pirx-backend/app/routers/onboarding.py`, `pirx-backend/app/ml/reference_population.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/app/ml/injury_risk_model.py`.
-- **Data-flow impact**: Onboarding baseline detection, initial projection seeding, and readiness API consumption in frontend views.
+- **What changed**: Documented onboarding baseline source option `knn_cold_start`, readiness additive injury-risk response metadata, and optional projection model metadata for dashboard/performance display.
+- **Why it changed**: Frontend onboarding/readiness/performance modules should distinguish race-history baselines from similar-runner estimates and surface model/risk context without breaking existing rendering.
+- **Code touchpoints**: `pirx-backend/app/routers/onboarding.py`, `pirx-backend/app/ml/reference_population.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/app/ml/injury_risk_model.py`, `pirx-backend/app/routers/projection.py`, `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Onboarding baseline detection, initial projection seeding, projection metadata rendering on dashboard/performance, and readiness API consumption in frontend views.
 - **Formula/constant changes**: none.
-- **API/schema impact**: `/onboarding/detect-baseline` now may return `baseline_source = "knn_cold_start"`; `/readiness` includes `components.injury_risk` and an injury-risk factor.
-- **Verification**: Backend tests `tests/test_onboarding.py`, `tests/test_services_wiring.py::TestProjectionService`, and `tests/test_readiness.py` pass for new paths.
+- **API/schema impact**: `/onboarding/detect-baseline` now may return `baseline_source = "knn_cold_start"`; `/readiness` includes `components.injury_risk` and an injury-risk factor; `/projection` may include `model_source`, `model_confidence`, and `fallback_reason`.
+- **Verification**: Backend tests `tests/test_onboarding.py`, `tests/test_services_wiring.py::TestProjectionService`, `tests/test_readiness.py`, and `tests/test_projection_endpoints.py` pass for new paths/contracts.
+
+## README Delta - Projection Fallback Provenance
+
+- **What changed**: Clarified that projection metadata (`model_source`, `model_confidence`, `fallback_reason`) now comes from persisted projection rows and can explicitly represent deterministic fallback from non-default selector candidates.
+- **Why it changed**: Keep dashboard/performance provenance UI behavior aligned with backend rollout semantics while ML model serving is phased in.
+- **Code touchpoints**: `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/services/driver_service.py`, `pirx-backend/app/services/model_orchestrator.py`, `pirx-backend/migrations/014_projection_model_metadata.sql`, `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Projection write path now stores fallback provenance that is surfaced by existing frontend cards without requiring breaking UI changes.
+- **Formula/constant changes**: none.
+- **API/schema impact**: additive `projection_state.fallback_reason`; `projection_state.model_type` now permits `deterministic` alongside ML families.
+- **Verification**: Backend compatibility test suite for projection/readiness/onboarding/services wiring passes after metadata persistence updates.

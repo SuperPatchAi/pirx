@@ -294,3 +294,40 @@ class TestTaskRegistryOperations:
         svc = SupabaseService()
         result = svc.update_task_status("t1", "completed")
         assert result["status"] == "completed"
+
+
+class TestModelLifecycleOperations:
+    def test_create_model_registry(self, mock_supabase):
+        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+            {"model_id": "m1", "model_family": "lstm"}
+        ]
+        svc = SupabaseService()
+        result = svc.create_model_registry({"user_id": "u1", "model_family": "lstm", "version": "v1"})
+        assert result["model_id"] == "m1"
+
+    def test_create_model_training_job(self, mock_supabase):
+        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+            {"job_id": "j1", "status": "queued"}
+        ]
+        svc = SupabaseService()
+        result = svc.create_model_training_job({"user_id": "u1", "job_type": "lstm_train"})
+        assert result["job_id"] == "j1"
+
+    def test_get_active_model(self, mock_supabase):
+        chain = (
+            mock_supabase.table.return_value.select.return_value
+            .eq.return_value.eq.return_value.eq.return_value.order.return_value
+            .limit.return_value.execute
+        )
+        chain.return_value.data = [{"model_id": "m1", "model_family": "lstm", "status": "active"}]
+        svc = SupabaseService()
+        model = svc.get_active_model("u1", "5000")
+        assert model["model_id"] == "m1"
+
+    def test_create_optuna_study_and_trial(self, mock_supabase):
+        mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [{"study_id": "s1"}]
+        svc = SupabaseService()
+        study = svc.create_optuna_study({"user_id": "u1", "study_name": "s"})
+        assert study["study_id"] == "s1"
+        trial = svc.create_optuna_trial({"study_id": "s1", "trial_number": 0, "state": "COMPLETE"})
+        assert trial["study_id"] == "s1"

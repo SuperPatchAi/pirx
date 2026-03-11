@@ -608,3 +608,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: Confidence display tiers added in frontend (`high >= 80%`, `moderate >= 60%`, else `low`).
 - **API/schema impact**: none.
 - **Verification**: Ran frontend tests `npm run test -- "src/components/home/__tests__/projection-tile.test.tsx" "src/app/(auth)/__tests__/login.test.tsx"` in `pirx-frontend` (5 passed).
+
+## README Delta - Serving Rollout Controls
+
+- **What changed**: Added backend rollout controls for model serving with feature flags (`enable_lstm_serving`, `enable_knn_serving`) and LSTM cohort gating (`lstm_serving_rollout_percentage`), plus serving-decision observability metric writes.
+- **Why it changed**: Ensure phased LSTM/KNN serving can be safely enabled by cohort while maintaining deterministic fallback and auditable serving decisions.
+- **Code touchpoints**: `pirx-backend/app/config.py`, `pirx-backend/app/services/model_orchestrator.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/tests/test_services_wiring.py`.
+- **Data-flow impact**: Projection model selection now respects config gates before serving ML paths; projection recompute logs `model_serving_decision` rows in `model_metrics` for per-event observability.
+- **Formula/constant changes**: Rollout bucket logic uses stable user hash `% 100 < lstm_serving_rollout_percentage`.
+- **API/schema impact**: No API or schema shape changes; uses existing `model_metrics` contract (`metric_type = model_serving_decision`, `model_type = event_<distance>`).
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (99 passed).

@@ -261,6 +261,7 @@ class TestProjectionService:
         mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
 
         from app.services.projection_service import ProjectionService
+        from app.config import settings
 
         svc = ProjectionService()
         with patch.object(
@@ -270,10 +271,52 @@ class TestProjectionService:
                 "model_family": "lstm",
                 "metadata": {"promotion_confidence": 0.84},
             },
+        ), patch.object(settings, "enable_lstm_serving", True), patch.object(
+            settings, "lstm_serving_rollout_percentage", 100
         ):
             decision = svc.orchestrator.select_projection_model("u1", "5000", MOCK_FEATURES)
         assert decision.model_type == "lstm"
         assert decision.confidence == 0.84
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_orchestrator_respects_feature_flag_disabled(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+        from app.config import settings
+
+        svc = ProjectionService()
+        with patch.object(
+            svc.orchestrator.db,
+            "get_active_model",
+            return_value={"model_family": "lstm", "metadata": {"promotion_confidence": 0.84}},
+        ), patch.object(settings, "enable_lstm_serving", False):
+            decision = svc.orchestrator.select_projection_model("u1", "5000", MOCK_FEATURES)
+        assert decision.model_type == "deterministic"
+        assert decision.reason == "lstm_feature_disabled"
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_orchestrator_respects_cohort_percentage(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+        from app.config import settings
+
+        svc = ProjectionService()
+        with patch.object(
+            svc.orchestrator.db,
+            "get_active_model",
+            return_value={"model_family": "lstm", "metadata": {"promotion_confidence": 0.84}},
+        ), patch.object(settings, "enable_lstm_serving", True), patch.object(
+            settings, "lstm_serving_rollout_percentage", 0
+        ):
+            decision = svc.orchestrator.select_projection_model("u1", "5000", MOCK_FEATURES)
+        assert decision.model_type == "deterministic"
+        assert decision.reason == "lstm_rollout_gate"
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_non_deterministic_selection_falls_back_to_deterministic_path(self, mock_sb):
@@ -320,6 +363,27 @@ class TestProjectionService:
         assert kwargs["fallback_reason"] is None
         assert kwargs["projected_time_override"] == 1190.0
         assert kwargs["model_confidence"] == 0.77
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_recompute_logs_model_serving_metric(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+        with patch.object(svc.db, "get_user", return_value={"baseline_time_seconds": 1260.0}), \
+             patch.object(svc.db, "get_latest_projection", return_value=None), \
+             patch.object(svc.db, "insert_model_metric", return_value={}) as mock_metric, \
+             patch.object(svc.orchestrator, "select_projection_model", return_value=MagicMock(model_type="deterministic", reason="default_production_path")), \
+             patch.object(svc.driver_service, "compute_and_store_drivers", return_value=(_make_projection_state(), _make_driver_states())):
+            _ = svc.recompute("u1", "5000", MOCK_FEATURES)
+
+        mock_metric.assert_called_once()
+        payload = mock_metric.call_args[0][0]
+        assert payload["metric_type"] == "model_serving_decision"
+        assert payload["event"] == "5000"
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_recompute_first_projection(self, mock_sb):

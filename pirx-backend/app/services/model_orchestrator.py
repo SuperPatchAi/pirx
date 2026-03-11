@@ -6,7 +6,9 @@ This service provides a single decision seam for gradual enablement.
 
 from dataclasses import dataclass
 from typing import Optional
+import hashlib
 
+from app.config import settings
 from app.services.supabase_client import SupabaseService
 
 
@@ -35,6 +37,27 @@ class ModelOrchestrator:
             if active:
                 family = active.get("model_family")
                 if family in {"lstm", "knn"}:
+                    if family == "lstm":
+                        if not settings.enable_lstm_serving:
+                            return ModelDecision(
+                                model_type="deterministic",
+                                reason="lstm_feature_disabled",
+                                confidence=None,
+                            )
+                        if not self._is_user_in_rollout(
+                            user_id, settings.lstm_serving_rollout_percentage
+                        ):
+                            return ModelDecision(
+                                model_type="deterministic",
+                                reason="lstm_rollout_gate",
+                                confidence=None,
+                            )
+                    if family == "knn" and not settings.enable_knn_serving:
+                        return ModelDecision(
+                            model_type="deterministic",
+                            reason="knn_feature_disabled",
+                            confidence=None,
+                        )
                     metadata = active.get("metadata") or {}
                     return ModelDecision(
                         model_type=family,
@@ -45,3 +68,14 @@ class ModelOrchestrator:
             return ModelDecision(model_type="deterministic", reason="selector_error", confidence=None)
 
         return ModelDecision(model_type="deterministic", reason="default_production_path", confidence=None)
+
+    @staticmethod
+    def _is_user_in_rollout(user_id: str, rollout_percentage: int) -> bool:
+        pct = max(0, min(int(rollout_percentage), 100))
+        if pct >= 100:
+            return True
+        if pct <= 0:
+            return False
+        digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()
+        bucket = int(digest[:8], 16) % 100
+        return bucket < pct

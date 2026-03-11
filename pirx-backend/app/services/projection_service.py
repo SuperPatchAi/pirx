@@ -10,6 +10,7 @@ from app.services.notification_service import NotificationService
 from app.services.model_orchestrator import ModelOrchestrator
 from typing import Optional
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,21 @@ class ProjectionService:
             fallback_reason=fallback_reason,
             projected_time_override=projected_time_override,
         )
+
+        try:
+            self.db.insert_model_metric(
+                {
+                    "user_id": user_id,
+                    "metric_date": datetime.now(timezone.utc).date().isoformat(),
+                    "model_type": f"event_{event}",
+                    "metric_type": "model_serving_decision",
+                    "event": event,
+                    "projected_seconds": new_state.projected_time_seconds,
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        except Exception:
+            logger.warning("Failed to persist model serving decision metric", exc_info=True)
 
         if self.engine.check_structural_shift(new_state, previous_state):
             old_time = previous_state.projected_time_seconds if previous_state else baseline_time

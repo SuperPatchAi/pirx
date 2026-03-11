@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     sentry_dsn: str = ""
     token_encryption_key: str = ""
+    enable_lstm_serving: bool = False
+    enable_knn_serving: bool = False
+    lstm_serving_rollout_percentage: int = 100
 
     @property
     def jwt_signing_secret(self) -> str:

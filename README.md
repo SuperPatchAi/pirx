@@ -801,3 +801,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: None in code; PDF now contains all 79 equations from README sections 1-9 with exact variable names, constants, and bounds matching the implementation.
 - **API/schema impact**: none.
 - **Verification**: Generated PDF via `./docs/build_science_pdf.sh`; confirmed 12 pages via `pdfinfo`; verified 79 equations, 20 tables, 3 figures, proper section ordering from title page through appendices to references.
+
+## README Delta - Terra Daily Fallback Ingest
+
+- **What changed**: Added a `daily` Terra webhook ingest path and normalizer that maps recovery signals (sleep score, resting HR, HRV) into `physiology` when providers send `type=daily` instead of separate `sleep`/`body` payloads.
+- **Why it changed**: Production logs showed only `type=daily` webhooks, so sleep/body-specific rows stayed empty despite successful sync.
+- **Code touchpoints**: `pirx-backend/app/routers/sync.py`, `pirx-backend/app/services/terra_service.py`, `pirx-backend/tests/test_terra.py`.
+- **Data-flow impact**: ingest -> `/sync/webhook/terra` `daily` branch -> `normalize_daily_entry` -> `physiology` persistence -> readiness/physiology APIs consume populated recovery fields.
+- **Formula/constant changes**: none.
+- **API/schema impact**: no schema changes; additive `daily` handling in existing Terra webhook route.
+- **Verification**: `./venv/bin/python -m pytest tests/test_terra.py tests/test_readiness.py tests/test_physiology.py -q` (97 passed).

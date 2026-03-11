@@ -291,3 +291,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: none.
 - **Verification**: IDE diagnostics are clean for updated Performance page.
+
+## README Delta - Daily Fallback Data Availability
+
+- **What changed**: Documented backend fallback support for Terra `daily` payloads so existing frontend recovery/body surfaces can populate even when providers do not emit separate `sleep`/`body` webhook types.
+- **Why it changed**: Live integrations may deliver `daily` only, and frontend should still receive recovery metrics through unchanged endpoints.
+- **Code touchpoints**: `pirx-backend/app/routers/sync.py`, `pirx-backend/app/services/terra_service.py`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/app/(app)/physiology/page.tsx`.
+- **Data-flow impact**: No frontend code-path change; existing `/physiology/latest`, `/physiology/trends`, and `/readiness` consumers receive more populated fields from backend.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Backend targeted suites pass with daily fallback path (`97 passed`), and existing frontend rendering paths remain unchanged.

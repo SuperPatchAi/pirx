@@ -366,6 +366,93 @@ class TerraService:
             "custom_fields": custom_fields,
         }
 
+    @staticmethod
+    def normalize_daily_entry(terra_daily: dict) -> dict:
+        """Normalize Terra daily payload into physiology-compatible fields."""
+        metadata = terra_daily.get("metadata", {}) if isinstance(terra_daily, dict) else {}
+        hr_summary = (
+            terra_daily.get("heart_rate_data", {}).get("summary", {})
+            if isinstance(terra_daily.get("heart_rate_data"), dict)
+            else {}
+        )
+        scores = terra_daily.get("scores", {}) if isinstance(terra_daily.get("scores"), dict) else {}
+        enrichment = (
+            terra_daily.get("data_enrichment", {})
+            if isinstance(terra_daily.get("data_enrichment"), dict)
+            else {}
+        )
+
+        timestamp_raw = (
+            metadata.get("end_time")
+            or metadata.get("start_time")
+            or terra_daily.get("timestamp")
+        )
+        try:
+            ts = (
+                datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00"))
+                if timestamp_raw
+                else datetime.now(timezone.utc)
+            )
+        except Exception:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        sleep_score = _first_number(
+            terra_daily,
+            [
+                ("scores", "sleep"),
+                ("data_enrichment", "readiness_score"),
+                ("data_enrichment", "sleep_score"),
+            ],
+        )
+        resting_hr = _first_number(
+            terra_daily,
+            [
+                ("heart_rate_data", "summary", "resting_hr_bpm"),
+                ("heart_rate_data", "summary", "min_hr_bpm"),
+            ],
+        )
+        hrv = _first_number(
+            terra_daily,
+            [
+                ("heart_rate_data", "summary", "avg_hrv_sdnn"),
+                ("heart_rate_data", "summary", "avg_hrv_rmssd"),
+            ],
+        )
+
+        # Daily payloads are uniquely keyed by metadata start/end window in Terra docs.
+        start_time = metadata.get("start_time")
+        end_time = metadata.get("end_time")
+        window_key = f"{start_time}|{end_time}" if start_time and end_time else None
+
+        custom_fields = {
+            "terra_type": "daily",
+            "daily_window_key": window_key,
+            "daily_sleep_score": _first_number({"scores": scores}, [("scores", "sleep")]),
+            "daily_recovery_score": _first_number(
+                {"data_enrichment": enrichment},
+                [("data_enrichment", "readiness_score")],
+            ),
+            "source_provider": (metadata.get("provider") or "terra").lower(),
+            "metadata_start_time": start_time,
+            "metadata_end_time": end_time,
+            "raw_daily_payload": {
+                "scores": scores,
+                "heart_rate_summary": hr_summary,
+                "data_enrichment": enrichment,
+            },
+        }
+
+        return {
+            "timestamp": ts.isoformat(),
+            "source": "wearable",
+            "resting_hr": int(resting_hr) if resting_hr is not None else None,
+            "hrv": float(hrv) if hrv is not None else None,
+            "sleep_score": float(sleep_score) if sleep_score is not None else None,
+            "custom_fields": custom_fields,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Stage 1: Terra type code → sport category (running vs not-running)

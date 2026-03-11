@@ -336,6 +336,46 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to queue feature engineering after Terra body for user %s", user_id)
 
+    elif payload.type == "daily" and payload.data and payload.user and payload.user.reference_id:
+        user_id = payload.user.reference_id
+        db = SupabaseService()
+        stored = 0
+        skipped = 0
+        for daily_payload in payload.data:
+            try:
+                normalized = TerraService.normalize_daily_entry(daily_payload)
+                custom = normalized.get("custom_fields") or {}
+                if (
+                    normalized.get("sleep_score") is None
+                    and normalized.get("resting_hr") is None
+                    and normalized.get("hrv") is None
+                    and custom.get("weight_kg") is None
+                    and custom.get("body_fat_percentage") is None
+                    and custom.get("bmi") is None
+                ):
+                    skipped += 1
+                    continue
+                db.insert_wearable_physiology(user_id, normalized)
+                stored += 1
+            except Exception:
+                logger.exception("Failed to insert Terra daily entry for user %s", user_id)
+        logger.info(
+            "Terra daily webhook processed: user=%s stored=%d skipped=%d total=%d",
+            user_id,
+            stored,
+            skipped,
+            len(payload.data),
+        )
+        if stored > 0:
+            try:
+                from app.tasks.feature_engineering import compute_features
+                compute_features.delay(user_id)
+            except Exception:
+                logger.exception(
+                    "Failed to queue feature engineering after Terra daily for user %s",
+                    user_id,
+                )
+
     return {"status": "ok"}
 
 

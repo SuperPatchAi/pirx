@@ -277,6 +277,25 @@ SAMPLE_TERRA_BODY = {
     },
 }
 
+SAMPLE_TERRA_DAILY = {
+    "metadata": {
+        "provider": "GARMIN",
+        "start_time": "2026-03-09T00:00:00+00:00",
+        "end_time": "2026-03-09T23:59:59+00:00",
+    },
+    "scores": {"sleep": 79, "recovery": 74},
+    "heart_rate_data": {
+        "summary": {
+            "resting_hr_bpm": 47,
+            "avg_hrv_sdnn": 63,
+            "avg_hrv_rmssd": 52,
+        }
+    },
+    "data_enrichment": {
+        "readiness_score": 76,
+    },
+}
+
 
 class TestTerraServiceNormalize:
     def test_normalizes_terra_activity(self):
@@ -335,6 +354,14 @@ class TestTerraServiceNormalize:
         assert result["custom_fields"]["weight_kg"] == 70.2
         assert result["custom_fields"]["body_fat_percentage"] == 13.8
         assert result["custom_fields"]["bmi"] == 22.1
+
+    def test_normalizes_daily_entry(self):
+        result = TerraService.normalize_daily_entry(SAMPLE_TERRA_DAILY)
+        assert result["sleep_score"] == 79.0
+        assert result["resting_hr"] == 47
+        assert result["hrv"] == 63.0
+        assert result["custom_fields"]["terra_type"] == "daily"
+        assert result["custom_fields"]["daily_window_key"] == "2026-03-09T00:00:00+00:00|2026-03-09T23:59:59+00:00"
 
 
 class TestExtractHrZones:
@@ -459,7 +486,7 @@ class TestTerraWebhookEndpoint:
     @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
     def test_terra_webhook_unknown_type(self, mock_sig, client):
         payload = {
-            "type": "sleep",
+            "type": "unknown_type",
             "user": {
                 "user_id": "terra-123",
                 "provider": "GARMIN",
@@ -504,6 +531,25 @@ class TestTerraWebhookEndpoint:
                 "reference_id": "pirx-user-456",
             },
             "data": [SAMPLE_TERRA_BODY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_called_once()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_daily_persists_physiology(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        payload = {
+            "type": "daily",
+            "user": {
+                "user_id": "terra-123",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "data": [SAMPLE_TERRA_DAILY],
             "status": "success",
         }
         response = client.post("/sync/webhook/terra", json=payload)

@@ -67,8 +67,9 @@ async def get_readiness(
             else:
                 days_since_long_run = 30
 
-        physiology = db.get_recent_physiology(user["user_id"], limit=1)
-        sleep_score = (physiology[0].get("sleep_score") or 75) if physiology else 75
+        physiology = db.get_recent_physiology(user["user_id"], limit=3)
+        latest_physiology = physiology[0] if physiology else {}
+        sleep_score = (latest_physiology.get("sleep_score") or 75) if latest_physiology else 75
 
         result = ReadinessEngine.compute_readiness(
             features=features,
@@ -88,6 +89,20 @@ async def get_readiness(
 
     injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
     risk_band = InjuryRiskModel.get_risk_band(injury_risk_prob)
+    latest_custom_fields = latest_physiology.get("custom_fields") if activities_raw else {}
+    if not isinstance(latest_custom_fields, dict):
+        latest_custom_fields = {}
+    latest_weight = latest_custom_fields.get("weight_kg")
+    latest_body_fat = latest_custom_fields.get("body_fat_percentage")
+    latest_bmi = latest_custom_fields.get("bmi")
+    body_factor_detail_parts = []
+    if latest_weight is not None:
+        body_factor_detail_parts.append(f"weight {float(latest_weight):.1f} kg")
+    if latest_body_fat is not None:
+        body_factor_detail_parts.append(f"body fat {float(latest_body_fat):.1f}%")
+    if latest_bmi is not None:
+        body_factor_detail_parts.append(f"BMI {float(latest_bmi):.1f}")
+    body_factor_detail = ", ".join(body_factor_detail_parts) if body_factor_detail_parts else None
     try:
         db.insert_injury_risk_assessment(
             {
@@ -101,6 +116,9 @@ async def get_readiness(
                     "weekly_load_stddev": features.get("weekly_load_stddev"),
                     "session_density_stability": features.get("session_density_stability"),
                     "sleep_score": sleep_score,
+                    "weight_kg": latest_weight,
+                    "body_fat_percentage": latest_body_fat,
+                    "bmi": latest_bmi,
                 },
             }
         )
@@ -116,6 +134,34 @@ async def get_readiness(
         },
         factors=[
             *result.factors,
+            *(
+                [
+                    {
+                        "factor": "Sleep recovery signal",
+                        "impact": (
+                            "positive"
+                            if sleep_score >= 80
+                            else "negative"
+                            if sleep_score <= 60
+                            else "neutral"
+                        ),
+                        "detail": f"Latest wearable sleep score {sleep_score:.0f}/100.",
+                    }
+                ]
+                if sleep_score is not None
+                else []
+            ),
+            *(
+                [
+                    {
+                        "factor": "Body composition signal",
+                        "impact": "neutral",
+                        "detail": body_factor_detail,
+                    }
+                ]
+                if body_factor_detail
+                else []
+            ),
             {
                 "factor": "Injury risk model",
                 "impact": (

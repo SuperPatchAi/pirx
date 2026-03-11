@@ -143,18 +143,42 @@ type MindsetValues = z.infer<typeof mindsetSchema>;
 /*  Trends Tab                                                        */
 /* ------------------------------------------------------------------ */
 
-type TrendPoint = { date: string; value: number };
+export type TrendPoint = { date: string; value: number };
 
-function mapEntriesToTrend(
+export function mapEntriesToTrend(
   entries: Record<string, unknown>[],
   valueKey: string,
 ): TrendPoint[] {
   return entries
-    .filter((e) => e.date && (e[valueKey] != null || e.value != null))
+    .filter((e) => (e.date || e.timestamp) && (e[valueKey] != null || e.value != null))
     .map((e) => ({
-      date: String(e.date),
+      date: String(e.date ?? e.timestamp),
       value: Number(e[valueKey] ?? e.value ?? 0),
     }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function mapCustomFieldTrend(
+  entries: Record<string, unknown>[],
+  customFieldKey: string,
+): TrendPoint[] {
+  return entries
+    .filter((e) => {
+      const custom = e.custom_fields;
+      return (
+        (e.date || e.timestamp) &&
+        typeof custom === "object" &&
+        custom !== null &&
+        (custom as Record<string, unknown>)[customFieldKey] != null
+      );
+    })
+    .map((e) => {
+      const custom = e.custom_fields as Record<string, unknown>;
+      return {
+        date: String(e.date ?? e.timestamp),
+        value: Number(custom[customFieldKey]),
+      };
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -162,6 +186,8 @@ function TrendsTab() {
   const [hrTrend, setHrTrend] = useState<TrendPoint[]>([]);
   const [hrvTrend, setHrvTrend] = useState<TrendPoint[]>([]);
   const [sleepTrend, setSleepTrend] = useState<TrendPoint[]>([]);
+  const [weightTrend, setWeightTrend] = useState<TrendPoint[]>([]);
+  const [bodyFatTrend, setBodyFatTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     async function loadTrends() {
@@ -173,9 +199,13 @@ function TrendsTab() {
           const hr = mapEntriesToTrend(entries, "resting_hr");
           const hrv = mapEntriesToTrend(entries, "hrv");
           const sleep = mapEntriesToTrend(entries, "sleep_score");
+          const weight = mapCustomFieldTrend(entries, "weight_kg");
+          const bodyFat = mapCustomFieldTrend(entries, "body_fat_percentage");
           if (hr.length > 0) setHrTrend(hr);
           if (hrv.length > 0) setHrvTrend(hrv);
           if (sleep.length > 0) setSleepTrend(sleep);
+          if (weight.length > 0) setWeightTrend(weight);
+          if (bodyFat.length > 0) setBodyFatTrend(bodyFat);
         }
       } catch {
         /* no data available */
@@ -184,7 +214,13 @@ function TrendsTab() {
     loadTrends();
   }, []);
 
-  if (hrTrend.length === 0 && hrvTrend.length === 0 && sleepTrend.length === 0) {
+  if (
+    hrTrend.length === 0 &&
+    hrvTrend.length === 0 &&
+    sleepTrend.length === 0 &&
+    weightTrend.length === 0 &&
+    bodyFatTrend.length === 0
+  ) {
     return (
       <EmptyState
         icon={HeartPulse}
@@ -236,6 +272,36 @@ function TrendsTab() {
             data={sleepTrend}
             color="hsl(262 83% 58%)"
             domain={[50, 100]}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Weight</CardTitle>
+          <CardDescription>30-day trend (kg)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TrendChart
+            data={weightTrend}
+            color="hsl(202 89% 53%)"
+            domain={[40, 110]}
+            unit=" kg"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Body Fat %</CardTitle>
+          <CardDescription>30-day trend (%)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TrendChart
+            data={bodyFatTrend}
+            color="hsl(8 85% 58%)"
+            domain={[5, 35]}
+            unit="%"
           />
         </CardContent>
       </Card>

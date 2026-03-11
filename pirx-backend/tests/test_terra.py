@@ -238,6 +238,29 @@ SAMPLE_TERRA_ACTIVITY = {
     "calories_data": {"total_burned_calories": 520},
 }
 
+SAMPLE_TERRA_SLEEP = {
+    "end_time": "2026-03-09T07:00:00+00:00",
+    "metadata": {"provider": "GARMIN"},
+    "sleep_durations_data": {
+        "total_sleep_duration_seconds": 27000,
+        "deep_sleep_duration_seconds": 4200,
+        "rem_sleep_duration_seconds": 5400,
+        "light_sleep_duration_seconds": 16000,
+    },
+    "sleep_data": {"sleep_score": 86},
+    "heart_rate_data": {"summary": {"resting_hr_bpm": 48, "avg_hrv_sdnn": 61}},
+}
+
+SAMPLE_TERRA_BODY = {
+    "timestamp": "2026-03-09T07:30:00+00:00",
+    "metadata": {"provider": "GARMIN"},
+    "measurements_data": {
+        "weight_kg": 70.2,
+        "body_fat_percentage": 13.8,
+        "bmi": 22.1,
+    },
+}
+
 
 class TestTerraServiceNormalize:
     def test_normalizes_terra_activity(self):
@@ -278,6 +301,20 @@ class TestTerraServiceNormalize:
         assert result.avg_hr is None
         assert result.max_hr is None
         assert result.hr_zones is None
+
+    def test_normalizes_sleep_entry(self):
+        result = TerraService.normalize_sleep_entry(SAMPLE_TERRA_SLEEP)
+        assert result["sleep_score"] == 86.0
+        assert result["resting_hr"] == 48
+        assert result["hrv"] == 61.0
+        assert result["custom_fields"]["terra_type"] == "sleep"
+
+    def test_normalizes_body_entry(self):
+        result = TerraService.normalize_body_entry(SAMPLE_TERRA_BODY)
+        assert result["source"] == "wearable"
+        assert result["custom_fields"]["terra_type"] == "body"
+        assert result["custom_fields"]["weight_kg"] == 70.2
+        assert result["custom_fields"]["body_fat_percentage"] == 13.8
 
 
 class TestExtractHrZones:
@@ -414,6 +451,44 @@ class TestTerraWebhookEndpoint:
         response = client.post("/sync/webhook/terra", json=payload)
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_sleep_persists_physiology(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        payload = {
+            "type": "sleep",
+            "user": {
+                "user_id": "terra-123",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "data": [SAMPLE_TERRA_SLEEP],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_called_once()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_terra_webhook_body_persists_physiology(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        payload = {
+            "type": "body",
+            "user": {
+                "user_id": "terra-123",
+                "provider": "GARMIN",
+                "reference_id": "pirx-user-456",
+            },
+            "data": [SAMPLE_TERRA_BODY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_called_once()
 
     def test_terra_webhook_rejects_invalid_signature(self, client):
         payload = {

@@ -1338,6 +1338,7 @@ export default function PerformancePage() {
   const [accuracyGlobal, setAccuracyGlobal] = useState<GlobalAccuracy | null>(null);
   const [accuracyUser, setAccuracyUser] = useState<UserAccuracy | null>(null);
   const [accuracyLoading, setAccuracyLoading] = useState(false);
+  const [physiologyLatest, setPhysiologyLatest] = useState<Record<string, unknown> | null>(null);
 
   const markFetched = useCallback((tab: string) => {
     setFetchedTabs((prev) => new Set(prev).add(tab));
@@ -1414,6 +1415,13 @@ export default function PerformancePage() {
           }
         } catch {
           // baseline not available
+        }
+
+        try {
+          const latest = await apiFetch("/physiology/latest");
+          if (!cancelled) setPhysiologyLatest((latest as Record<string, unknown>) ?? null);
+        } catch {
+          // physiology not available
         }
 
         if (cancelled) return;
@@ -1667,6 +1675,10 @@ export default function PerformancePage() {
         return null;
     }
   };
+  const physiologyCustom = (physiologyLatest?.custom_fields as Record<string, unknown> | undefined) ?? {};
+  const latestSleep = typeof physiologyLatest?.sleep_score === "number" ? physiologyLatest.sleep_score : null;
+  const latestWeight = typeof physiologyCustom.weight_kg === "number" ? physiologyCustom.weight_kg : null;
+  const latestBodyFat = typeof physiologyCustom.body_fat_percentage === "number" ? physiologyCustom.body_fat_percentage : null;
 
   return (
     <div className="space-y-6">
@@ -1736,6 +1748,48 @@ export default function PerformancePage() {
                 </div>
                 {baseline && <Badge variant="secondary">Active</Badge>}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">Recovery & Body Signals</p>
+                <Badge variant="secondary">Wearable</Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sleep Score</p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {latestSleep == null ? "—" : `${Math.round(latestSleep)}/100`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Weight</p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {latestWeight == null ? "—" : `${latestWeight.toFixed(1)} kg`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Body Fat</p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {latestBodyFat == null ? "—" : `${latestBodyFat.toFixed(1)}%`}
+                  </p>
+                </div>
+              </div>
+              <Collapsible className="mt-3">
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-green-500 hover:text-green-400">
+                  Why this number?
+                  <ChevronDown className="h-3 w-3" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 rounded-md border border-border/60 bg-muted/20 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Values come from the most recent wearable physiology entry synced from Terra
+                    `sleep` and `body` webhooks. Sleep score is shown on a 0-100 scale, while
+                    weight/body-fat are taken from wearable body-composition payloads.
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 

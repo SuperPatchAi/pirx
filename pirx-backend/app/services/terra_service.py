@@ -179,6 +179,143 @@ class TerraService:
             fit_file_url=None,
         )
 
+    @staticmethod
+    def normalize_sleep_entry(terra_sleep: dict) -> dict:
+        """Normalize Terra sleep payload into physiology-compatible fields."""
+        metadata = terra_sleep.get("metadata", {}) if isinstance(terra_sleep, dict) else {}
+        sleep_data = terra_sleep.get("sleep_durations_data", {}) if isinstance(terra_sleep, dict) else {}
+        readiness_data = terra_sleep.get("readiness_data", {}) if isinstance(terra_sleep, dict) else {}
+        hr_summary = (
+            terra_sleep.get("heart_rate_data", {}).get("summary", {})
+            if isinstance(terra_sleep.get("heart_rate_data"), dict)
+            else {}
+        )
+
+        timestamp_raw = (
+            terra_sleep.get("end_time")
+            or terra_sleep.get("start_time")
+            or metadata.get("end_time")
+            or metadata.get("start_time")
+        )
+        try:
+            ts = datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00")) if timestamp_raw else datetime.now(timezone.utc)
+        except Exception:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        sleep_score = _first_number(
+            terra_sleep,
+            [
+                ("sleep_score",),
+                ("sleep_data", "sleep_score"),
+                ("sleep_data", "score"),
+                ("readiness_data", "sleep_score"),
+                ("readiness_data", "score"),
+                ("scores", "sleep"),
+                ("scores", "overall"),
+            ],
+        )
+        resting_hr = _first_number(
+            terra_sleep,
+            [
+                ("heart_rate_data", "summary", "resting_hr_bpm"),
+                ("heart_rate_data", "summary", "resting_heart_rate"),
+                ("readiness_data", "resting_heart_rate"),
+            ],
+        )
+        hrv = _first_number(
+            terra_sleep,
+            [
+                ("heart_rate_data", "summary", "avg_hrv_sdnn"),
+                ("heart_rate_data", "summary", "avg_hrv_rmssd"),
+                ("readiness_data", "hrv"),
+            ],
+        )
+
+        custom_fields = {
+            "terra_type": "sleep",
+            "sleep_total_seconds": _first_number(terra_sleep, [("sleep_durations_data", "total_sleep_duration_seconds"), ("sleep_durations_data", "total_sleep_seconds")]),
+            "sleep_deep_seconds": _first_number(terra_sleep, [("sleep_durations_data", "deep_sleep_duration_seconds"), ("sleep_durations_data", "deep_sleep_seconds")]),
+            "sleep_light_seconds": _first_number(terra_sleep, [("sleep_durations_data", "light_sleep_duration_seconds"), ("sleep_durations_data", "light_sleep_seconds")]),
+            "sleep_rem_seconds": _first_number(terra_sleep, [("sleep_durations_data", "rem_sleep_duration_seconds"), ("sleep_durations_data", "rem_sleep_seconds")]),
+            "sleep_awake_seconds": _first_number(terra_sleep, [("sleep_durations_data", "awake_duration_seconds"), ("sleep_durations_data", "awake_seconds")]),
+            "sleep_efficiency": _first_number(terra_sleep, [("sleep_durations_data", "sleep_efficiency"), ("sleep_data", "efficiency")]),
+            "source_provider": (metadata.get("provider") or "terra").lower(),
+            "raw_sleep_payload": {
+                "sleep_durations_data": sleep_data if isinstance(sleep_data, dict) else {},
+                "readiness_data": readiness_data if isinstance(readiness_data, dict) else {},
+                "heart_rate_summary": hr_summary if isinstance(hr_summary, dict) else {},
+            },
+        }
+
+        return {
+            "timestamp": ts.isoformat(),
+            "source": "wearable",
+            "resting_hr": int(resting_hr) if resting_hr is not None else None,
+            "hrv": float(hrv) if hrv is not None else None,
+            "sleep_score": float(sleep_score) if sleep_score is not None else None,
+            "custom_fields": custom_fields,
+        }
+
+    @staticmethod
+    def normalize_body_entry(terra_body: dict) -> dict:
+        """Normalize Terra body payload into physiology-compatible fields."""
+        metadata = terra_body.get("metadata", {}) if isinstance(terra_body, dict) else {}
+        timestamp_raw = (
+            terra_body.get("timestamp")
+            or terra_body.get("measurement_time")
+            or metadata.get("timestamp")
+            or metadata.get("measurement_time")
+        )
+        try:
+            ts = datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00")) if timestamp_raw else datetime.now(timezone.utc)
+        except Exception:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        weight_kg = _first_number(
+            terra_body,
+            [
+                ("measurements_data", "weight_kg"),
+                ("weight_data", "weight_kg"),
+                ("weight_data", "summary", "weight_kg"),
+                ("weight",),
+            ],
+        )
+        body_fat_pct = _first_number(
+            terra_body,
+            [
+                ("measurements_data", "body_fat_percentage"),
+                ("body_composition_data", "body_fat_percentage"),
+                ("body_data", "body_fat_percentage"),
+            ],
+        )
+        bmi = _first_number(
+            terra_body,
+            [
+                ("measurements_data", "bmi"),
+                ("body_composition_data", "bmi"),
+                ("body_data", "bmi"),
+            ],
+        )
+
+        custom_fields = {
+            "terra_type": "body",
+            "weight_kg": float(weight_kg) if weight_kg is not None else None,
+            "body_fat_percentage": float(body_fat_pct) if body_fat_pct is not None else None,
+            "bmi": float(bmi) if bmi is not None else None,
+            "source_provider": (metadata.get("provider") or "terra").lower(),
+            "raw_body_payload": terra_body,
+        }
+
+        return {
+            "timestamp": ts.isoformat(),
+            "source": "wearable",
+            "custom_fields": custom_fields,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Stage 1: Terra type code → sport category (running vs not-running)
@@ -320,4 +457,24 @@ def extract_hr_zones(terra_activity: dict) -> Optional[list[float]]:
         return None
     if isinstance(hr_zones, list) and len(hr_zones) > 0:
         return [float(z.get("duration_seconds", 0)) for z in hr_zones]
+    return None
+
+
+def _first_number(payload: dict, paths: list[tuple[str, ...]]) -> Optional[float]:
+    """Return first numeric value found at any nested key path."""
+    for path in paths:
+        cursor = payload
+        try:
+            for key in path:
+                if not isinstance(cursor, dict):
+                    cursor = None
+                    break
+                cursor = cursor.get(key)
+            if isinstance(cursor, (int, float)):
+                return float(cursor)
+            if isinstance(cursor, str):
+                value = float(cursor)
+                return value
+        except Exception:
+            continue
     return None

@@ -39,7 +39,12 @@ class TestPhysiologyEndpoints:
 
     def test_get_trends_with_real_data(self, client):
         fake_entries = [
-            {"entry_id": "e1", "timestamp": "2026-01-01T00:00:00Z", "resting_hr": 50}
+            {
+                "entry_id": "e1",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "resting_hr": 50,
+                "custom_fields": {"weight_kg": 70.1, "body_fat_percentage": 14.0},
+            }
         ]
         with patch("app.routers.physiology.SupabaseService") as mock_cls:
             mock_instance = MagicMock()
@@ -49,6 +54,7 @@ class TestPhysiologyEndpoints:
             assert r.status_code == 200
             data = r.json()
             assert data["entries"] == fake_entries
+            assert data["entries"][0]["custom_fields"]["weight_kg"] == 70.1
 
     def test_get_latest(self, client):
         with patch("app.routers.physiology.SupabaseService") as mock_cls:

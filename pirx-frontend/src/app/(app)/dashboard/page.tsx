@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ShareModal, type CardData } from "@/components/social/share-modal";
 import { Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const EMPTY_PROJECTION = {
   projected_time: "—",
@@ -90,6 +91,7 @@ export default function DashboardPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [cardData, setCardData] = useState<CardData | null>(null);
   const [cohortPercentile, setCohortPercentile] = useState<number | null>(null);
+  const [physiologyLatest, setPhysiologyLatest] = useState<Record<string, unknown> | null>(null);
 
   const { user } = useAuth();
   useProjectionRealtime(user?.id ?? null);
@@ -149,7 +151,7 @@ export default function DashboardPage() {
   const loadDashboardData = useCallback(async () => {
     try {
       const { apiFetch } = await import("@/lib/api");
-      const [projData, driversData, readinessData, allEventsData, weeklyData, syncData, volumeData, hrData] = await Promise.allSettled([
+      const [projData, driversData, readinessData, allEventsData, weeklyData, syncData, volumeData, hrData, physiologyData] = await Promise.allSettled([
         apiFetch(`/projection?event=${selectedEvent}`),
         apiFetch("/drivers"),
         apiFetch("/readiness"),
@@ -158,6 +160,7 @@ export default function DashboardPage() {
         apiFetch("/sync/status"),
         apiFetch("/features/weekly-volume"),
         apiFetch("/features/hr-trend"),
+        apiFetch("/physiology/latest"),
       ]);
 
       if (projData.status === "fulfilled") setProjection(projData.value as Record<string, unknown>);
@@ -230,6 +233,9 @@ export default function DashboardPage() {
       if (hrData.status === "fulfilled") {
         setHrTrend(hrData.value as { points: { date: string; avg_hr: number }[]; avg: number | null; max: number | null });
       }
+      if (physiologyData.status === "fulfilled") {
+        setPhysiologyLatest(physiologyData.value as Record<string, unknown>);
+      }
     } catch {
       // keep existing data on failure
     }
@@ -291,6 +297,10 @@ export default function DashboardPage() {
   const modelSource = (projection?.model_source as string | undefined) ?? null;
   const modelConfidence = (projection?.model_confidence as number | undefined) ?? null;
   const fallbackReason = (projection?.fallback_reason as string | undefined) ?? null;
+  const physiologyCustom = (physiologyLatest?.custom_fields as Record<string, unknown> | undefined) ?? {};
+  const latestSleep = typeof physiologyLatest?.sleep_score === "number" ? physiologyLatest.sleep_score : null;
+  const latestWeight = typeof physiologyCustom.weight_kg === "number" ? physiologyCustom.weight_kg : null;
+  const latestBodyFat = typeof physiologyCustom.body_fat_percentage === "number" ? physiologyCustom.body_fat_percentage : null;
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -356,6 +366,34 @@ export default function DashboardPage() {
           distanceKmPerWeek={metrics.distanceKm}
           acwr={metrics.acwr}
         />
+      </AnimatedSection>
+
+      <AnimatedSection delay={0.27}>
+        <Card className="border-border/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Recovery & Body</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-3 gap-3 pt-0">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sleep</p>
+              <p className="text-base font-semibold tabular-nums">
+                {latestSleep == null ? "—" : `${Math.round(latestSleep)}/100`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Weight</p>
+              <p className="text-base font-semibold tabular-nums">
+                {latestWeight == null ? "—" : `${latestWeight.toFixed(1)} kg`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Body Fat</p>
+              <p className="text-base font-semibold tabular-nums">
+                {latestBodyFat == null ? "—" : `${latestBodyFat.toFixed(1)}%`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </AnimatedSection>
 
       <AnimatedSection delay={0.28}>

@@ -761,3 +761,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none (same formulas, now surfaced explicitly).
 - **API/schema impact**: additive `explanation` object in `/features/economy` response.
 - **Verification**: Backend economy endpoint tests pass (`25 passed`) and frontend lints clean.
+
+## README Delta - Terra Sleep and Body Integration
+
+- **What changed**: Added Terra `sleep` and `body` webhook ingest paths, normalized payload mappers, wearable physiology persistence helper, readiness factor enrichment, and frontend surfacing on dashboard/performance/physiology.
+- **Why it changed**: Bring non-activity recovery/body signals into PIRX end-to-end flow so readiness and injury-risk context can reflect sleep/body telemetry already available from Terra providers.
+- **Code touchpoints**: `pirx-backend/app/routers/sync.py`, `pirx-backend/app/services/terra_service.py`, `pirx-backend/app/services/supabase_client.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/tests/test_terra.py`, `pirx-backend/tests/test_readiness.py`, `pirx-backend/tests/test_physiology.py`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/app/(app)/physiology/page.tsx`, `pirx-frontend/src/app/(app)/physiology/__tests__/trends-mappers.test.ts`.
+- **Data-flow impact**: ingest -> Terra webhook router handles `sleep`/`body` -> normalization -> `physiology` persistence (`custom_fields` for body metrics) -> readiness/injury-risk factor detail -> dashboard/performance/physiology rendering.
+- **Formula/constant changes**: none (additive signal integration and explainability only).
+- **API/schema impact**: no schema migration required; `/sync/webhook/terra` now processes `sleep` and `body` types; `/readiness` shape unchanged with additive sleep/body factor detail; frontend continues consuming existing endpoint contracts.
+- **Verification**: Backend tests passed via `./venv/bin/python -m pytest tests/test_terra.py tests/test_readiness.py tests/test_physiology.py` (95 passed). Frontend targeted tests passed via `npm run test:run -- "src/app/(app)/physiology/__tests__/trends-mappers.test.ts" "src/components/home/__tests__/projection-tile.test.tsx"` (3 passed).

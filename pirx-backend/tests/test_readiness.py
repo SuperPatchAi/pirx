@@ -216,6 +216,44 @@ class TestReadinessWithRealData:
         assert persisted["event"] == "5000"
         assert persisted["risk_band"] in {"low", "moderate", "high"}
 
+    @patch("app.services.feature_service.FeatureService.compute_all_features")
+    @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_enriches_sleep_and_body_factors(self, mock_db_cls, mock_feat_fn, client):
+        mock_db = MagicMock()
+        mock_db.get_recent_activities.return_value = [
+            {
+                "timestamp": "2026-03-05T08:00:00+00:00",
+                "duration_seconds": 2400,
+                "distance_meters": 8000,
+                "avg_hr": 148,
+                "activity_type": "easy",
+            }
+        ]
+        mock_db.get_recent_physiology.return_value = [
+            {
+                "sleep_score": 83,
+                "custom_fields": {"weight_kg": 70.0, "body_fat_percentage": 14.2, "bmi": 22.1},
+            }
+        ]
+        mock_db_cls.return_value = mock_db
+        mock_feat_fn.return_value = {
+            "acwr_4w": 1.1,
+            "weekly_load_stddev": 3500,
+            "session_density_stability": 0.85,
+        }
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        factors = r.json()["factors"]
+        factor_names = [f.get("factor", "") for f in factors]
+        assert "Sleep recovery signal" in factor_names
+        assert "Body composition signal" in factor_names
+
+        persisted = mock_db.insert_injury_risk_assessment.call_args[0][0]
+        contributions = persisted["feature_contributions"]
+        assert contributions["sleep_score"] == 83
+        assert contributions["weight_kg"] == 70.0
+
     @patch("app.routers.readiness.SupabaseService")
     def test_readiness_returns_insufficient_data_when_no_activities(self, mock_cls, client):
         inst = MagicMock()

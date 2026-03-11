@@ -271,3 +271,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: none (additive response metadata only).
 - **Verification**: Backend economy endpoint tests pass; frontend lints clean for updated Economy tab rendering.
+
+## README Delta - Sleep and Body UI Surfaces
+
+- **What changed**: Added dashboard `Recovery & Body` quick view, performance overview `Recovery & Body Signals` card with explainability, and physiology trends support for wearable `custom_fields` body metrics (`weight_kg`, `body_fat_percentage`) plus timestamp-based trend mapping.
+- **Why it changed**: Surface Terra sleep/body telemetry in all primary user-facing analytics screens while keeping existing API contracts and graceful empty-state behavior.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/app/(app)/physiology/page.tsx`, `pirx-frontend/src/app/(app)/physiology/__tests__/trends-mappers.test.ts`.
+- **Data-flow impact**: Frontend now consumes `/physiology/latest` and `/physiology/trends` body/sleep fields and maps them into overview cards and trend charts.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none; additive rendering of existing `sleep_score` and `custom_fields` values.
+- **Verification**: `npm run test:run -- "src/app/(app)/physiology/__tests__/trends-mappers.test.ts" "src/components/home/__tests__/projection-tile.test.tsx"` passes.

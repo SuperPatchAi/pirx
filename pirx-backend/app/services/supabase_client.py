@@ -243,6 +243,12 @@ class SupabaseService:
         )
         return result.data
 
+    def insert_wearable_physiology(self, user_id: str, entry: dict) -> dict:
+        """Insert a physiology row from wearable webhook normalization."""
+        payload = {"user_id": user_id, "source": "wearable", **entry}
+        result = self.client.table("physiology").insert(payload).execute()
+        return result.data[0] if result.data else payload
+
     # --- Notification Log ---
 
     def insert_notification(

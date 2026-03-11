@@ -847,3 +847,19 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none.
 - **API/schema impact**: No schema migration. `TerraUser.provider` now `Optional[str]`. Two new internal helpers in sync router.
 - **Verification**: `./venv/bin/python -m pytest tests/ -q` (573 passed).
+
+## README Delta - Phase 0: OOM Stabilization
+
+- **What changed**: Reduced Render worker concurrency and added memory safeguards to prevent recurring OOM crashes on the Starter plan (~512 MB RAM). Trimmed raw Terra body payloads stored in `custom_fields`. Lazy-loaded scikit-learn in the injury risk model. Added `ml` queue to the Celery worker.
+- **Why it changed**: Backend and Celery worker services were repeatedly killed by OOM on Render. Two Uvicorn workers + four Celery workers exceeded 512 MB when all imported libraries (numpy, langchain, openai, sklearn) were loaded per-process. Storing full raw Terra body payloads inflated per-request memory during normalization.
+- **Code touchpoints**: `render.yaml`, `pirx-backend/app/services/terra_service.py`, `pirx-backend/app/ml/injury_risk_model.py`.
+- **Data-flow impact**: Ingest (body webhook normalization now stores trimmed payload subset instead of full raw body). No changes to feature engineering, projection, API contracts, frontend, or chat.
+- **Formula/constant changes**: None.
+- **API/schema impact**: None. The `custom_fields.raw_body_payload` field now stores only `body_composition_data`, `oxygen_data`, and `temperature_data` sub-keys (previously stored the entire Terra body dictionary).
+- **Infrastructure changes**:
+  - Uvicorn workers: 2 -> 1
+  - Celery concurrency: 4 -> 2
+  - Celery `--max-memory-per-child=250000` added (recycles workers exceeding ~250 MB)
+  - Celery queues: `celery,sync,projection` -> `celery,sync,projection,ml`
+  - sklearn import in `InjuryRiskModel._get_model()` moved from module-level to function-level (lazy load)
+- **Verification**: `python -m pytest tests/test_terra.py tests/test_ml_tasks.py tests/test_services_wiring.py tests/test_readiness.py tests/test_projection_engine.py tests/test_shap_explainer.py -v` (179 passed, 0 failed).

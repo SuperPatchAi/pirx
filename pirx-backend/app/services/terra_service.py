@@ -383,7 +383,15 @@ class TerraService:
             "source_provider": (metadata.get("provider") or "terra").lower(),
             "metadata_start_time": metadata.get("start_time"),
             "metadata_end_time": metadata.get("end_time"),
-            "raw_body_payload": terra_body,
+            "raw_body_payload": {
+                k: terra_body.get(k)
+                for k in (
+                    "body_composition_data",
+                    "oxygen_data",
+                    "temperature_data",
+                )
+                if terra_body.get(k) is not None
+            },
         }
 
         return {

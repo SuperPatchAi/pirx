@@ -6,7 +6,6 @@ signal in readiness explanations. It does not write or alter projection state.
 
 from functools import lru_cache
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
 
 
 class InjuryRiskModel:
@@ -27,7 +26,9 @@ class InjuryRiskModel:
 
     @staticmethod
     @lru_cache(maxsize=1)
-    def _get_model() -> RandomForestRegressor:
+    def _get_model():
+        from sklearn.ensemble import RandomForestRegressor
+
         rng = np.random.default_rng(42)
         n = 1600
 

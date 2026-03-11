@@ -240,6 +240,7 @@ export default function DashboardPage() {
   const improvement = (projection?.total_improvement_seconds as number) ?? EMPTY_PROJECTION.total_improvement_seconds;
   const change21d = (projection?.twenty_one_day_change as number) ?? EMPTY_PROJECTION.twenty_one_day_change;
   const modelSource = (projection?.model_source as string | undefined) ?? null;
+  const modelConfidence = (projection?.model_confidence as number | undefined) ?? null;
   const fallbackReason = (projection?.fallback_reason as string | undefined) ?? null;
 
   if (loading) {
@@ -261,6 +262,7 @@ export default function DashboardPage() {
             improvementSeconds={improvement}
             twentyOneDayChange={change21d}
             modelSource={modelSource}
+            modelConfidence={modelConfidence}
             fallbackReason={fallbackReason}
           />
           <Button

@@ -181,3 +181,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none (frontend consumes backend-derived risk bands).
 - **API/schema impact**: no contract shape changes; additive semantic detail in readiness factor text.
 - **Verification**: Backend readiness and regression test suites pass after risk band persistence updates.
+
+## README Delta - Projection Metadata UX Clarity
+
+- **What changed**: Dashboard `ProjectionTile` and performance `Model & Risk` panel now render human-readable model source labels, confidence bands, and fallback explanations.
+- **Why it changed**: Provide explicit rollout-state clarity in UI while retaining backward-compatible metadata contracts.
+- **Code touchpoints**: `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/components/home/__tests__/projection-tile.test.tsx`.
+- **Data-flow impact**: Existing projection metadata fields are interpreted into user-facing labels (`LSTM model`, confidence tier, deterministic fallback reason) without additional API requests.
+- **Formula/constant changes**: frontend confidence tiers (`high >= 80%`, `moderate >= 60%`, else `low`).
+- **API/schema impact**: none.
+- **Verification**: `npm run test -- "src/components/home/__tests__/projection-tile.test.tsx" "src/app/(auth)/__tests__/login.test.tsx"` passes.

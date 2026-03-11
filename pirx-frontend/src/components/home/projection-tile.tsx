@@ -12,6 +12,7 @@ interface ProjectionTileProps {
   improvementSeconds: number;
   twentyOneDayChange: number;
   modelSource?: string | null;
+  modelConfidence?: number | null;
   fallbackReason?: string | null;
 }
 
@@ -41,6 +42,23 @@ function formatEventName(event: string): string {
   return names[event] || event;
 }
 
+function humanizeModelSource(source: string): string {
+  const normalized = source.toLowerCase();
+  if (normalized === "lstm") return "LSTM model";
+  if (normalized === "deterministic") return "Deterministic model";
+  if (normalized === "knn") return "KNN model";
+  return `${source.toUpperCase()} model`;
+}
+
+function humanizeFallbackReason(reason: string): string {
+  const map: Record<string, string> = {
+    fallback_from_lstm_unavailable: "LSTM unavailable, using deterministic projection",
+    fallback_from_lstm: "LSTM disabled for serving, using deterministic projection",
+    fallback_from_knn: "KNN disabled for serving, using deterministic projection",
+  };
+  return map[reason] ?? reason.replaceAll("_", " ");
+}
+
 export function ProjectionTile({
   event,
   projectedTime,
@@ -48,6 +66,7 @@ export function ProjectionTile({
   improvementSeconds,
   twentyOneDayChange,
   modelSource,
+  modelConfidence,
   fallbackReason,
 }: ProjectionTileProps) {
   const [showExplainer, setShowExplainer] = useState(false);
@@ -100,15 +119,20 @@ export function ProjectionTile({
             )}
           </div>
 
-          {(modelSource || fallbackReason) && (
+          {(modelSource || modelConfidence != null || fallbackReason) && (
             <div className="flex items-center gap-2">
               {modelSource && (
                 <span className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {modelSource}
+                  {humanizeModelSource(modelSource)}
+                </span>
+              )}
+              {modelConfidence != null && (
+                <span className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {Math.round(modelConfidence * 100)}% confidence
                 </span>
               )}
               {fallbackReason && (
-                <span className="text-[10px] text-muted-foreground/80">{fallbackReason}</span>
+                <span className="text-[10px] text-muted-foreground/80">{humanizeFallbackReason(fallbackReason)}</span>
               )}
             </div>
           )}

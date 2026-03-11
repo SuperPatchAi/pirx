@@ -598,3 +598,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: Added risk band thresholds (`low < 0.35`, `moderate < 0.60`, else `high`) and piecewise probability calibration for RF outputs.
 - **API/schema impact**: No API shape change; readiness factor detail now includes risk band text and writes additive rows to existing `injury_risk_assessments` table.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (96 passed).
+
+## README Delta - Frontend Rollout Messaging
+
+- **What changed**: Updated dashboard/performance projection metadata rendering to show human-readable model source labels, confidence tiers, and explicit fallback explanations.
+- **Why it changed**: Make phased model rollout states understandable in the active UI without changing API payload shapes.
+- **Code touchpoints**: `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/components/home/__tests__/projection-tile.test.tsx`.
+- **Data-flow impact**: Existing projection response metadata (`model_source`, `model_confidence`, `fallback_reason`) now maps to clearer frontend labels and confidence categorization.
+- **Formula/constant changes**: Confidence display tiers added in frontend (`high >= 80%`, `moderate >= 60%`, else `low`).
+- **API/schema impact**: none.
+- **Verification**: Ran frontend tests `npm run test -- "src/components/home/__tests__/projection-tile.test.tsx" "src/app/(auth)/__tests__/login.test.tsx"` in `pirx-frontend` (5 passed).

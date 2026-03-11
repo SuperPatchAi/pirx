@@ -78,6 +78,33 @@ function roundNum(n: number, decimals = 1): string {
   return Number(n).toFixed(decimals);
 }
 
+function formatProjectionSourceLabel(source: string | null): string {
+  if (!source) return "Deterministic model";
+  const normalized = source.toLowerCase();
+  if (normalized === "lstm") return "LSTM model";
+  if (normalized === "deterministic") return "Deterministic model";
+  if (normalized === "knn") return "KNN model";
+  return `${source.toUpperCase()} model`;
+}
+
+function formatFallbackReasonLabel(reason: string | null): string {
+  if (!reason) return "None";
+  const map: Record<string, string> = {
+    fallback_from_lstm_unavailable: "LSTM unavailable, deterministic fallback",
+    fallback_from_lstm: "LSTM disabled for serving, deterministic fallback",
+    fallback_from_knn: "KNN disabled for serving, deterministic fallback",
+  };
+  return map[reason] ?? reason.replaceAll("_", " ");
+}
+
+function formatConfidenceLabel(confidence: number | null): string {
+  if (confidence == null) return "Not available";
+  const pct = Math.round(confidence * 100);
+  if (pct >= 80) return `${pct}% (high)`;
+  if (pct >= 60) return `${pct}% (moderate)`;
+  return `${pct}% (low)`;
+}
+
 function NoData({ message }: { message?: string }) {
   return (
     <Card>
@@ -1523,13 +1550,11 @@ export default function PerformancePage() {
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <p className="text-muted-foreground">Projection Source</p>
-                  <p className="font-medium">{modelRiskMeta.modelSource ?? "deterministic"}</p>
+                  <p className="font-medium">{formatProjectionSourceLabel(modelRiskMeta.modelSource)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Model Confidence</p>
-                  <p className="font-medium tabular-nums">
-                    {modelRiskMeta.modelConfidence != null ? `${Math.round(modelRiskMeta.modelConfidence * 100)}%` : "—"}
-                  </p>
+                  <p className="font-medium tabular-nums">{formatConfidenceLabel(modelRiskMeta.modelConfidence)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Injury Risk Readiness</p>
@@ -1539,7 +1564,7 @@ export default function PerformancePage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Fallback Reason</p>
-                  <p className="font-medium">{modelRiskMeta.fallbackReason ?? "none"}</p>
+                  <p className="font-medium">{formatFallbackReasonLabel(modelRiskMeta.fallbackReason)}</p>
                 </div>
               </div>
             </CardContent>

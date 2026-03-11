@@ -96,12 +96,53 @@ async def create_physiology_entry(
 
 @router.get("/latest")
 async def get_latest_physiology(user: dict = Depends(get_current_user)):
-    """Get the most recent physiology entry."""
+    """Get a merged view of the freshest non-null physiology values.
+
+    Because sleep, body, and daily webhooks arrive as separate rows, returning
+    only the single newest row would hide values delivered by an earlier type.
+    This merges the latest non-null value for each field across the most recent
+    entries (up to 20, covering ~1 week of mixed webhook types).
+    """
     db = SupabaseService()
-    entries = db.get_recent_physiology(user["user_id"], limit=1)
-    if entries:
-        return entries[0]
-    return _generate_mock_latest()
+    entries = db.get_recent_physiology(user["user_id"], limit=20)
+    if not entries:
+        return _generate_mock_latest()
+
+    TOP_LEVEL_KEYS = {
+        "sleep_score", "resting_hr", "hrv",
+        "confidence_score", "fatigue_score", "focus_score", "notes",
+    }
+    CUSTOM_KEYS = {
+        "weight_kg", "body_fat_percentage", "bmi", "vo2max_ml_per_min_per_kg",
+        "avg_stress_level", "strain_level",
+        "sleep_total_seconds", "sleep_deep_seconds", "sleep_light_seconds",
+        "sleep_rem_seconds", "sleep_efficiency",
+        "daily_activity_score", "daily_recovery_score", "daily_recovery_score_from_scores",
+    }
+
+    merged = {
+        "entry_id": entries[0].get("entry_id"),
+        "timestamp": entries[0].get("timestamp"),
+        "source": entries[0].get("source"),
+    }
+
+    for key in TOP_LEVEL_KEYS:
+        merged[key] = None
+    merged_custom: dict = {}
+    for key in CUSTOM_KEYS:
+        merged_custom[key] = None
+
+    for entry in entries:
+        for key in TOP_LEVEL_KEYS:
+            if merged[key] is None and entry.get(key) is not None:
+                merged[key] = entry[key]
+        cf = entry.get("custom_fields") or {}
+        for key in CUSTOM_KEYS:
+            if merged_custom[key] is None and cf.get(key) is not None:
+                merged_custom[key] = cf[key]
+
+    merged["custom_fields"] = merged_custom
+    return merged
 
 
 @router.post("/mindset")

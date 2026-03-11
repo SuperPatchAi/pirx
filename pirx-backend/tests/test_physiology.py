@@ -56,7 +56,7 @@ class TestPhysiologyEndpoints:
             assert data["entries"] == fake_entries
             assert data["entries"][0]["custom_fields"]["weight_kg"] == 70.1
 
-    def test_get_latest(self, client):
+    def test_get_latest_empty(self, client):
         with patch("app.routers.physiology.SupabaseService") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.get_recent_physiology.return_value = []
@@ -65,6 +65,52 @@ class TestPhysiologyEndpoints:
             assert r.status_code == 200
             data = r.json()
             assert "resting_hr" in data
+
+    def test_get_latest_merges_across_entry_types(self, client):
+        """Freshest non-null value for each field wins across sleep/daily/body rows."""
+        entries = [
+            {
+                "entry_id": "daily-1",
+                "timestamp": "2026-03-12T04:00:00+00:00",
+                "source": "wearable",
+                "sleep_score": None,
+                "resting_hr": 44,
+                "hrv": None,
+                "custom_fields": {"terra_type": "daily", "weight_kg": None, "body_fat_percentage": None, "bmi": None, "avg_stress_level": 21.0},
+            },
+            {
+                "entry_id": "sleep-1",
+                "timestamp": "2026-03-11T08:37:00+00:00",
+                "source": "wearable",
+                "sleep_score": 55,
+                "resting_hr": None,
+                "hrv": 34,
+                "custom_fields": {"terra_type": "sleep", "sleep_efficiency": 0.87, "weight_kg": None},
+            },
+            {
+                "entry_id": "body-1",
+                "timestamp": "2026-03-11T07:30:00+00:00",
+                "source": "wearable",
+                "sleep_score": None,
+                "resting_hr": None,
+                "hrv": None,
+                "custom_fields": {"terra_type": "body", "weight_kg": 70.2, "body_fat_percentage": 13.8, "bmi": 22.1},
+            },
+        ]
+        with patch("app.routers.physiology.SupabaseService") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.get_recent_physiology.return_value = entries
+            mock_cls.return_value = mock_instance
+            r = client.get("/physiology/latest")
+            assert r.status_code == 200
+            data = r.json()
+            assert data["entry_id"] == "daily-1"
+            assert data["sleep_score"] == 55
+            assert data["resting_hr"] == 44
+            assert data["hrv"] == 34
+            assert data["custom_fields"]["weight_kg"] == 70.2
+            assert data["custom_fields"]["body_fat_percentage"] == 13.8
+            assert data["custom_fields"]["avg_stress_level"] == 21.0
 
     def test_create_entry(self, client):
         with patch("app.routers.physiology.SupabaseService") as mock_cls:

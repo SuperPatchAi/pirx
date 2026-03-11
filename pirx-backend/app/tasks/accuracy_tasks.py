@@ -25,6 +25,7 @@ def compute_model_accuracy() -> dict:
         users = db.get_onboarded_users()
 
         event_errors: dict[str, list[float]] = {}
+        event_biases: dict[str, list[float]] = {}
         global_errors: list[float] = []
         global_biases: list[float] = []
 
@@ -61,7 +62,10 @@ def compute_model_accuracy() -> dict:
 
                 if event not in event_errors:
                     event_errors[event] = []
+                if event not in event_biases:
+                    event_biases[event] = []
                 event_errors[event].append(error)
+                event_biases[event].append(bias)
 
         if not global_errors:
             return {"status": "no_data"}
@@ -86,7 +90,7 @@ def compute_model_accuracy() -> dict:
 
         for event, errors in event_errors.items():
             if len(errors) >= 2:
-                biases_ev = [global_biases[i] for i, e in enumerate(global_errors) if e in errors]
+                biases_ev = event_biases.get(event, [])
                 mae_ev = float(np.mean(errors))
                 bias_ev = float(np.mean(biases_ev)) if biases_ev else 0
                 std_ev = float(np.std(biases_ev)) if biases_ev else 0

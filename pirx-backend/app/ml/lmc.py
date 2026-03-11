@@ -23,6 +23,9 @@ LAMBDA_BOUNDS = {
     "lambda1_min": 1.10,
     "lambda1_max": 1.15,
     "lambda1_median": 1.12,
+    "lambda2_min": -0.4,
+    "lambda2_max": 0.4,
+    "lambda2_median": 0.0,
 }
 
 
@@ -76,8 +79,8 @@ class LMCEngine:
         if len(lambda_hat) >= 2:
             lambda_hat[1] = np.clip(
                 lambda_hat[1],
-                LAMBDA_BOUNDS["lambda1_min"],
-                LAMBDA_BOUNDS["lambda1_max"],
+                LAMBDA_BOUNDS["lambda2_min"],
+                LAMBDA_BOUNDS["lambda2_max"],
             )
 
         return lambda_hat

@@ -1,0 +1,67 @@
+---
+description: Always load PIRX README references at session start
+alwaysApply: true
+---
+
+# README-First Session Rule
+
+For every new session, review project reference documentation before proposing code changes, plans, or architecture decisions.
+
+## Required startup reads
+
+1. `README.md` (root project end-to-end reference)
+2. `pirx-backend/migrations/README.md` (schema and migration order)
+3. `pirx-frontend/README.md` (frontend baseline notes)
+
+## Behavior requirements
+
+- Treat the root `README.md` as the primary source of current architecture, data flow, and ML calculation definitions.
+- If code and README appear inconsistent, verify code, then update docs as part of the same workstream.
+- Before major changes, confirm impacted path across ingest, features, projection, API, frontend, and chat.
+- Keep terminology aligned with project standards documented in the README and skills.
+- Automatically update README docs in the same session when changes affect behavior, formulas, data flow, routes, schema, tasks, integrations, or architecture.
+- Do not mark work complete until README updates are finished and reflect the implemented code.
+
+## Auto-update triggers (must update docs)
+
+Update one or more README files whenever changes touch:
+
+- ML calculations, constants, thresholds, scoring labels, or projection/readiness formulas
+- Data flow or orchestration across sync, cleaning, feature, projection, chat, or realtime stages
+- API endpoints, request/response shapes, auth/dependency flow, or route behavior
+- Database migrations, schema/table/index changes, or task scheduling behavior
+- Frontend rendering logic that changes how projection/driver/readiness outputs are presented
+
+## README update targets
+
+- Root system reference: `README.md`
+- Schema and migration reference: `pirx-backend/migrations/README.md`
+- Frontend reference notes: `pirx-frontend/README.md`
+
+Update only the files impacted by the change, but always check all three for consistency.
+
+## Quick preflight checklist
+
+- Read the three README files above
+- Confirm affected modules and data flow touchpoints
+- Validate migration assumptions before DB/schema changes
+- Proceed with TDD and update docs when behavior changes
+- Before finalizing, verify README content matches the implemented code paths and formulas
+
+## README delta template (use on every relevant change)
+
+When updating docs, add/refresh content using this structure:
+
+- **What changed**: One-line description of implemented behavior/code change.
+- **Why it changed**: One-line rationale (bug fix, feature, refactor, alignment).
+- **Code touchpoints**: Paths of changed modules/routes/tasks/components.
+- **Data-flow impact**: Which stage(s) changed (ingest, clean, features, projection, API, frontend, chat, realtime).
+- **Formula/constant changes**: Old -> new values/equations/thresholds (or "none").
+- **API/schema impact**: Endpoint contract or migration/table/index changes (or "none").
+- **Verification**: Tests/commands/checks performed and result.
+
+Use this template in:
+
+- `README.md` for architecture/data-flow/ML behavior changes
+- `pirx-backend/migrations/README.md` for DB/migration changes
+- `pirx-frontend/README.md` for frontend behavior/integration changes

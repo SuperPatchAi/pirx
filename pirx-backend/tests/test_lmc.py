@@ -146,10 +146,10 @@ class TestLambdaBounding:
         assert 0.85 <= lam[0] <= 1.15
 
     def test_lambda1_within_population_bounds(self):
-        """lambda_hat[1] (speed-endurance) should be bounded to [1.10, 1.15]."""
+        """lambda_hat[1] (speed-endurance) should be centered near 0, not ~1.1."""
         engine = LMCEngine(rank=2)
         lam = engine.estimate_runner(["5000", "10000"], [1200.0, 2600.0])
-        assert 1.10 <= lam[1] <= 1.15
+        assert -0.4 <= lam[1] <= 0.4
 
     def test_single_race_rank2_lambda0_near_one(self):
         engine = LMCEngine(rank=2)

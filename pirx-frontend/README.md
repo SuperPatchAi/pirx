@@ -171,3 +171,13 @@ Before making frontend changes:
 - **Formula/constant changes**: confidence derivation `clamp(1 - best_value, 0, 1)` (backend-driven).
 - **API/schema impact**: no API shape changes; existing `model_confidence` optional field semantics extended.
 - **Verification**: Backend regression suite passes with updated confidence propagation logic.
+
+## README Delta - Readiness Injury Band Detail
+
+- **What changed**: Documented that readiness injury factor detail now includes explicit risk band text (`low`/`moderate`/`high`) derived from calibrated backend risk probability.
+- **Why it changed**: Improve frontend interpretation consistency for readiness risk messaging and reduce ambiguity in user-facing risk context.
+- **Code touchpoints**: `pirx-backend/app/ml/injury_risk_model.py`, `pirx-backend/app/routers/readiness.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Frontend readiness consumers continue using same response shape but now receive richer injury factor detail text from backend.
+- **Formula/constant changes**: none (frontend consumes backend-derived risk bands).
+- **API/schema impact**: no contract shape changes; additive semantic detail in readiness factor text.
+- **Verification**: Backend readiness and regression test suites pass after risk band persistence updates.

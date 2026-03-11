@@ -588,3 +588,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: Added tuning promotion threshold `best_value <= 0.34`; promotion confidence derived as `clamp(1 - best_value, 0, 1)`.
 - **API/schema impact**: No schema changes; projection metadata confidence can now be sourced from promoted model registry metadata.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (94 passed).
+
+## README Delta - Injury Risk Persistence and Bands
+
+- **What changed**: Added calibrated RF injury risk banding (`low`/`moderate`/`high`) and persisted per-request readiness risk assessments to `injury_risk_assessments`.
+- **Why it changed**: Improve operational traceability and consistency of readiness injury messaging while keeping injury risk additive to readiness (not projection-changing).
+- **Code touchpoints**: `pirx-backend/app/ml/injury_risk_model.py`, `pirx-backend/app/routers/readiness.py`, `pirx-backend/tests/test_readiness.py`.
+- **Data-flow impact**: Readiness API now computes calibrated risk probability, derives risk band, stores assessment payload, and returns factors that include the explicit band label.
+- **Formula/constant changes**: Added risk band thresholds (`low < 0.35`, `moderate < 0.60`, else `high`) and piecewise probability calibration for RF outputs.
+- **API/schema impact**: No API shape change; readiness factor detail now includes risk band text and writes additive rows to existing `injury_risk_assessments` table.
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (96 passed).

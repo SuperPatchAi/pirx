@@ -22,6 +22,8 @@ class InjuryRiskModel:
         "resting_hr_trend",
         "sleep_score",
     ]
+    LOW_RISK_MAX = 0.35
+    MODERATE_RISK_MAX = 0.6
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -76,5 +78,25 @@ class InjuryRiskModel:
                 float(sleep_score) if sleep_score is not None else 75.0,
             ]]
         )
-        prob = float(cls._get_model().predict(x)[0])
-        return max(0.0, min(1.0, prob))
+        raw_prob = float(cls._get_model().predict(x)[0])
+        calibrated = cls._calibrate_probability(raw_prob)
+        return max(0.0, min(1.0, calibrated))
+
+    @classmethod
+    def get_risk_band(cls, risk_probability: float) -> str:
+        if risk_probability < cls.LOW_RISK_MAX:
+            return "low"
+        if risk_probability < cls.MODERATE_RISK_MAX:
+            return "moderate"
+        return "high"
+
+    @staticmethod
+    def _calibrate_probability(raw_prob: float) -> float:
+        # Lightweight piecewise calibration that tempers low/high tails
+        # while keeping the center band near identity.
+        p = max(0.0, min(1.0, raw_prob))
+        if p < 0.2:
+            return p * 0.9
+        if p < 0.7:
+            return 0.02 + 0.95 * p
+        return min(1.0, 0.05 + 0.95 * p)

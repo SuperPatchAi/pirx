@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from datetime import datetime, timezone
+import logging
 
 from app.dependencies import get_current_user
 from app.ml.readiness_engine import ReadinessEngine
@@ -9,6 +10,7 @@ from app.models.activities import NormalizedActivity
 from app.services.supabase_client import SupabaseService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ReadinessResponse(BaseModel):
@@ -85,6 +87,25 @@ async def get_readiness(
         )
 
     injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
+    risk_band = InjuryRiskModel.get_risk_band(injury_risk_prob)
+    try:
+        db.insert_injury_risk_assessment(
+            {
+                "user_id": user["user_id"],
+                "event": event,
+                "model_id": None,
+                "risk_probability": injury_risk_prob,
+                "risk_band": risk_band,
+                "feature_contributions": {
+                    "acwr_4w": features.get("acwr_4w"),
+                    "weekly_load_stddev": features.get("weekly_load_stddev"),
+                    "session_density_stability": features.get("session_density_stability"),
+                    "sleep_score": sleep_score,
+                },
+            }
+        )
+    except Exception:
+        logger.warning("Failed to persist injury risk assessment", exc_info=True)
 
     return ReadinessResponse(
         score=result.score,
@@ -98,13 +119,9 @@ async def get_readiness(
             {
                 "factor": "Injury risk model",
                 "impact": (
-                    "negative"
-                    if injury_risk_prob >= 0.6
-                    else "neutral"
-                    if injury_risk_prob >= 0.35
-                    else "positive"
+                    "negative" if risk_band == "high" else "neutral" if risk_band == "moderate" else "positive"
                 ),
-                "detail": f"Estimated risk {injury_risk_prob * 100:.1f}%",
+                "detail": f"Estimated risk {injury_risk_prob * 100:.1f}% ({risk_band})",
             },
         ],
     )

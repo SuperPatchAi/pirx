@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies import get_current_user
 from app.ml.readiness_engine import ReadinessEngine, READINESS_WEIGHTS
+from app.ml.injury_risk_model import InjuryRiskModel
 
 
 @pytest.fixture
@@ -46,6 +47,13 @@ class TestReadinessScore:
         result = ReadinessEngine.compute_readiness(make_features())
         for key in READINESS_WEIGHTS:
             assert key in result.components
+
+
+class TestInjuryRiskCalibration:
+    def test_risk_band_thresholds(self):
+        assert InjuryRiskModel.get_risk_band(0.10) == "low"
+        assert InjuryRiskModel.get_risk_band(0.40) == "moderate"
+        assert InjuryRiskModel.get_risk_band(0.75) == "high"
 
 
 class TestACWRComponent:
@@ -202,6 +210,11 @@ class TestReadinessWithRealData:
         assert "acwr_balance" in data["components"]
         assert "fatigue_freshness" in data["components"]
         assert "injury_risk" in data["components"]
+        mock_db.insert_injury_risk_assessment.assert_called_once()
+        persisted = mock_db.insert_injury_risk_assessment.call_args[0][0]
+        assert persisted["user_id"] == "test-user"
+        assert persisted["event"] == "5000"
+        assert persisted["risk_band"] in {"low", "moderate", "high"}
 
     @patch("app.routers.readiness.SupabaseService")
     def test_readiness_returns_insufficient_data_when_no_activities(self, mock_cls, client):
@@ -255,3 +268,30 @@ class TestReadinessWithRealData:
         assert r.status_code == 200
         data = r.json()
         assert 0 <= data["score"] <= 100
+
+    @patch("app.services.feature_service.FeatureService.compute_all_features")
+    @patch("app.routers.readiness.InjuryRiskModel.predict_probability", return_value=0.72)
+    @patch("app.routers.readiness.SupabaseService")
+    def test_readiness_persists_high_risk_band(self, mock_db_cls, _mock_prob, mock_feat_fn, client):
+        mock_db = MagicMock()
+        mock_db.get_recent_activities.return_value = [
+            {
+                "timestamp": "2026-03-05T08:00:00+00:00",
+                "duration_seconds": 2400,
+                "distance_meters": 8000,
+                "avg_hr": 148,
+                "activity_type": "easy",
+            }
+        ]
+        mock_db.get_recent_physiology.return_value = [{"sleep_score": 60}]
+        mock_db_cls.return_value = mock_db
+        mock_feat_fn.return_value = {
+            "acwr_4w": 1.5,
+            "weekly_load_stddev": 9000,
+            "session_density_stability": 1.6,
+        }
+
+        r = client.get("/readiness")
+        assert r.status_code == 200
+        persisted = mock_db.insert_injury_risk_assessment.call_args[0][0]
+        assert persisted["risk_band"] == "high"

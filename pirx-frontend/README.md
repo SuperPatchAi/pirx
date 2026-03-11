@@ -211,3 +211,13 @@ Before making frontend changes:
 - **Formula/constant changes**: frontend risk-band labels use thresholds aligned to backend semantics (`low < 35`, `moderate < 60`, else `high`).
 - **API/schema impact**: none (existing `/readiness` payload reused).
 - **Verification**: Manual UI validation path: open Performance -> Analysis -> Injury Risk card after sync/recompute and confirm score/band/detail render.
+
+## README Delta - Dashboard All-Events Projection Parsing
+
+- **What changed**: Dashboard all-events cards now accept projection time from `projected_time_display`, `projected_time_seconds`, or `midpoint_seconds` instead of assuming only one numeric field.
+- **Why it changed**: Prevent non-5K event cards from rendering `0s` when backend payloads vary across deploy states or adapters.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-backend/app/routers/projection.py`.
+- **Data-flow impact**: Frontend dashboard event-swiper rendering only.
+- **Formula/constant changes**: none.
+- **API/schema impact**: no contract changes; parser is backward/forward compatible with existing payload variants.
+- **Verification**: Manual dashboard check after sync/recompute confirms non-5K cards render event-specific projected times.

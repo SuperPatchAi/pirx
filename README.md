@@ -701,3 +701,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none in backend formulas; frontend applies band labels aligned with readiness injury thresholds.
 - **API/schema impact**: none (reuses existing `/readiness` response contract).
 - **Verification**: Frontend behavior verified via Performance analysis flow (Injury Risk card score/band/detail render after sync and readiness fetch).
+
+## README Delta - Dashboard Event Projection Field Compatibility
+
+- **What changed**: Hardened dashboard all-events rendering to read projection time from `projected_time_display`, `projected_time_seconds`, or `midpoint_seconds`.
+- **Why it changed**: Some environments returned mixed projection field variants, causing non-5K event cards to display `0s` despite valid projection data.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-backend/app/routers/projection.py`.
+- **Data-flow impact**: Frontend projection display stage only (dashboard event swiper).
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Manual dashboard validation after sync confirms all event cards render non-zero projection labels when backend rows exist.

@@ -51,6 +51,24 @@ function formatEventLabel(event: string): string {
   return EVENT_LABELS[event] ?? `${event}m`;
 }
 
+function getProjectedTimeLabel(p: {
+  projected_time_seconds?: number | string | null;
+  midpoint_seconds?: number | string | null;
+  projected_time_display?: string | null;
+}): string {
+  if (typeof p.projected_time_display === "string" && p.projected_time_display.trim()) {
+    return p.projected_time_display;
+  }
+  const rawSeconds = p.projected_time_seconds ?? p.midpoint_seconds;
+  const seconds =
+    typeof rawSeconds === "number"
+      ? rawSeconds
+      : typeof rawSeconds === "string"
+        ? Number(rawSeconds)
+        : NaN;
+  return Number.isFinite(seconds) ? formatTime(seconds) : "—";
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [projection, setProjection] = useState<Record<string, unknown> | null>(null);
@@ -153,15 +171,38 @@ export default function DashboardPage() {
       }
       if (readinessData.status === "fulfilled") setReadiness(readinessData.value as Record<string, unknown>);
       if (allEventsData.status === "fulfilled") {
-        const evts = allEventsData.value as { projections?: Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> };
-        const list = evts?.projections ?? (Array.isArray(allEventsData.value) ? allEventsData.value as Array<{ event?: string; display_name?: string; projected_time_seconds?: number; twenty_one_day_change?: number }> : []);
+        const evts = allEventsData.value as {
+          projections?: Array<{
+            event?: string;
+            display_name?: string;
+            projected_time_seconds?: number | string;
+            midpoint_seconds?: number | string;
+            projected_time_display?: string;
+            twenty_one_day_change?: number | string;
+          }>;
+        };
+        const list = evts?.projections ?? (
+          Array.isArray(allEventsData.value)
+            ? (allEventsData.value as Array<{
+                event?: string;
+                display_name?: string;
+                projected_time_seconds?: number | string;
+                midpoint_seconds?: number | string;
+                projected_time_display?: string;
+                twenty_one_day_change?: number | string;
+              }>)
+            : []
+        );
         if (list.length > 0) {
           setAllEvents(
             list.map((p) => ({
               event: String(p.event ?? ""),
               displayName: p.display_name ?? formatEventLabel(String(p.event ?? "")),
-              projectedTime: formatTime(p.projected_time_seconds ?? 0),
-              change: p.twenty_one_day_change != null ? `${p.twenty_one_day_change > 0 ? "+" : ""}${p.twenty_one_day_change}s` : "—",
+              projectedTime: getProjectedTimeLabel(p),
+              change:
+                p.twenty_one_day_change != null
+                  ? `${Number(p.twenty_one_day_change) > 0 ? "+" : ""}${Number(p.twenty_one_day_change)}s`
+                  : "—",
             }))
           );
         }

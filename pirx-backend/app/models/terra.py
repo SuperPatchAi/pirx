@@ -4,7 +4,7 @@ from typing import Optional
 
 class TerraUser(BaseModel):
     user_id: str
-    provider: str
+    provider: Optional[str] = None
     reference_id: Optional[str] = None
 
 

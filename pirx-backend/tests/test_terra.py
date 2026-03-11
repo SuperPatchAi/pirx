@@ -710,6 +710,166 @@ class TestTerraWebhookEndpoint:
         assert response.status_code == 403
 
 
+class TestResolvePirxUserId:
+    """Verify _resolve_pirx_user_id tries reference_id, then falls back to DB lookup."""
+
+    def test_returns_reference_id_when_present(self):
+        from app.routers.sync import _resolve_pirx_user_id
+        mock_db = MagicMock()
+        result = _resolve_pirx_user_id(mock_db, "terra-abc", "pirx-user-1")
+        assert result == "pirx-user-1"
+        mock_db.client.table.assert_not_called()
+
+    def test_falls_back_to_terra_user_id_lookup(self):
+        from app.routers.sync import _resolve_pirx_user_id
+        mock_db = MagicMock()
+        mock_select = MagicMock()
+        mock_db.client.table.return_value.select.return_value = mock_select
+        mock_select.eq.return_value = mock_select
+        mock_select.limit.return_value = mock_select
+        mock_select.execute.return_value = MagicMock(data=[{"user_id": "pirx-resolved"}])
+
+        result = _resolve_pirx_user_id(mock_db, "terra-abc", None)
+        assert result == "pirx-resolved"
+        mock_db.client.table.assert_called_with("wearable_connections")
+
+    def test_returns_none_when_no_match(self):
+        from app.routers.sync import _resolve_pirx_user_id
+        mock_db = MagicMock()
+        mock_select = MagicMock()
+        mock_db.client.table.return_value.select.return_value = mock_select
+        mock_select.eq.return_value = mock_select
+        mock_select.limit.return_value = mock_select
+        mock_select.execute.return_value = MagicMock(data=[])
+
+        result = _resolve_pirx_user_id(mock_db, "terra-unknown", None)
+        assert result is None
+
+
+class TestSyncTerraUserId:
+    """Verify _sync_terra_user_id upserts the connection."""
+
+    def test_upserts_connection(self):
+        from app.routers.sync import _sync_terra_user_id
+        mock_db = MagicMock()
+        _sync_terra_user_id(mock_db, "terra-new-id", "pirx-user-1", "GARMIN")
+        mock_db.client.table.assert_called_with("wearable_connections")
+        upsert_call = mock_db.client.table.return_value.upsert
+        upsert_call.assert_called_once()
+        upserted = upsert_call.call_args[0][0]
+        assert upserted["user_id"] == "pirx-user-1"
+        assert upserted["terra_user_id"] == "terra-new-id"
+        assert upserted["provider"] == "garmin"
+        assert upserted["is_active"] is True
+
+
+class TestWebhookFallbackUserLookup:
+    """Verify webhook handlers fall back to terra_user_id lookup when reference_id is missing."""
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_daily_webhook_without_reference_id_falls_back(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        mock_select = MagicMock()
+        mock_db.client.table.return_value.select.return_value = mock_select
+        mock_select.eq.return_value = mock_select
+        mock_select.limit.return_value = mock_select
+        mock_select.execute.return_value = MagicMock(data=[{"user_id": "pirx-resolved"}])
+        mock_db.client.table.return_value.upsert.return_value.execute.return_value = MagicMock(data=[])
+
+        payload = {
+            "type": "daily",
+            "user": {"user_id": "terra-123", "provider": "GARMIN"},
+            "data": [SAMPLE_TERRA_DAILY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_called_once()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_sleep_webhook_without_reference_id_falls_back(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        mock_select = MagicMock()
+        mock_db.client.table.return_value.select.return_value = mock_select
+        mock_select.eq.return_value = mock_select
+        mock_select.limit.return_value = mock_select
+        mock_select.execute.return_value = MagicMock(data=[{"user_id": "pirx-resolved"}])
+        mock_db.client.table.return_value.upsert.return_value.execute.return_value = MagicMock(data=[])
+
+        payload = {
+            "type": "sleep",
+            "user": {"user_id": "terra-123", "provider": "GARMIN"},
+            "data": [SAMPLE_TERRA_SLEEP],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_called_once()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_daily_webhook_unresolvable_user_returns_ok(self, _mock_sig, mock_db_cls, client):
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        mock_select = MagicMock()
+        mock_db.client.table.return_value.select.return_value = mock_select
+        mock_select.eq.return_value = mock_select
+        mock_select.limit.return_value = mock_select
+        mock_select.execute.return_value = MagicMock(data=[])
+
+        payload = {
+            "type": "daily",
+            "user": {"user_id": "terra-unknown", "provider": "GARMIN"},
+            "data": [SAMPLE_TERRA_DAILY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        mock_db.insert_wearable_physiology.assert_not_called()
+
+    @patch("app.routers.sync.SupabaseService")
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_daily_webhook_syncs_terra_user_id(self, _mock_sig, mock_db_cls, client):
+        """When reference_id is present, _sync_terra_user_id updates the connection."""
+        mock_db = MagicMock()
+        mock_db_cls.return_value = mock_db
+        mock_db.client.table.return_value.upsert.return_value.execute.return_value = MagicMock(data=[])
+
+        payload = {
+            "type": "daily",
+            "user": {"user_id": "terra-new-id", "provider": "GARMIN", "reference_id": "pirx-user-1"},
+            "data": [SAMPLE_TERRA_DAILY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+        upsert_calls = mock_db.client.table.return_value.upsert.call_args_list
+        synced = any(
+            c[0][0].get("terra_user_id") == "terra-new-id"
+            for c in upsert_calls
+        )
+        assert synced, "Expected _sync_terra_user_id to upsert the new terra_user_id"
+
+
+class TestTerraUserProviderOptional:
+    """Verify TerraUser.provider is optional and webhook doesn't 422."""
+
+    @patch("app.routers.sync.TerraService.verify_webhook_signature", return_value=True)
+    def test_webhook_accepts_missing_provider(self, _mock_sig, client):
+        payload = {
+            "type": "daily",
+            "user": {"user_id": "terra-123"},
+            "data": [SAMPLE_TERRA_DAILY],
+            "status": "success",
+        }
+        response = client.post("/sync/webhook/terra", json=payload)
+        assert response.status_code == 200
+
+
 class TestBackfillTerraUserIdLookup:
     """Verify that backfill_history uses terra_user_id from wearable_connections."""
 

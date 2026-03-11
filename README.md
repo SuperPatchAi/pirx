@@ -832,3 +832,18 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none; data extraction paths only.
 - **API/schema impact**: No schema migration. `TerraWebhookPayload` model now accepts `new_user`, `old_user`, `version` fields. `insert_wearable_physiology` now does upsert-on-match instead of blind insert.
 - **Verification**: `./venv/bin/python -m pytest tests/ -q` (564 passed).
+
+## README Delta - Terra Data Loading Fix (stale terra_user_id + fallback lookup)
+
+- **What changed**: Fixed three compounding bugs that prevented sleep/body/daily physiology data from loading after sync:
+  1. **Stale `terra_user_id`**: Webhook data events now auto-sync `terra_user_id` in `wearable_connections` via `_sync_terra_user_id()`, so the next backfill always uses the active Terra user.
+  2. **No fallback user lookup**: Added `_resolve_pirx_user_id()` that first tries `reference_id`, then falls back to querying `wearable_connections` by `terra_user_id`. All four data webhook handlers (`activity`, `sleep`, `body`, `daily`) no longer silently drop data when `reference_id` is absent.
+  3. **Missing diagnostic logging**: Enhanced webhook entry log with `reference_id`, added per-entry normalized-value logging before skip checks, upgraded processing logs from `info` to `warning` for Render visibility.
+  4. **Backfill resilience**: Wrapped `_backfill_terra_physiology` call in try/except so failures don't silently swallow the entire task.
+  5. **Model robustness**: `TerraUser.provider` changed from required `str` to `Optional[str]` to prevent 422 on edge-case webhook payloads.
+- **Why it changed**: Production Celery logs showed Terra `/v2/activity` returning 404 due to a stale `terra_user_id` that didn't match the active webhook user. Webhook data handlers gated on `reference_id` with no fallback, and processing logs at `info` level were invisible on Render.
+- **Code touchpoints**: `pirx-backend/app/routers/sync.py`, `pirx-backend/app/tasks/sync_tasks.py`, `pirx-backend/app/models/terra.py`, `pirx-backend/tests/test_terra.py`.
+- **Data-flow impact**: ingest (webhook + backfill) -> user resolution (reference_id or terra_user_id lookup) -> terra_user_id sync -> normalization -> physiology persistence -> feature engineering.
+- **Formula/constant changes**: none.
+- **API/schema impact**: No schema migration. `TerraUser.provider` now `Optional[str]`. Two new internal helpers in sync router.
+- **Verification**: `./venv/bin/python -m pytest tests/ -q` (573 passed).

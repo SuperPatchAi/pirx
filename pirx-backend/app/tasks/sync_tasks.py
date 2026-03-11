@@ -201,7 +201,7 @@ def _backfill_terra_physiology(
                 "Terra %s backfill request failed for user %s", data_type, user_id,
             )
 
-    logger.info(
+    logger.warning(
         "Terra physiology backfill: user=%s sleep=%d body=%d daily=%d",
         user_id, totals["sleep"], totals["body"], totals["daily"],
     )
@@ -402,9 +402,13 @@ def backfill_history(self, user_id: str, provider: str) -> dict:
                 except Exception:
                     logger.exception("Terra backfill failed for user %s provider %s", user_id, provider)
 
-                _backfill_terra_physiology(
-                    db, user_id, terra_user_id, _settings, start_date, end_date,
-                )
+                try:
+                    phys_totals = _backfill_terra_physiology(
+                        db, user_id, terra_user_id, _settings, start_date, end_date,
+                    )
+                    logger.warning("Physiology backfill result for user %s: %s", user_id, phys_totals)
+                except Exception:
+                    logger.exception("_backfill_terra_physiology failed for user %s", user_id)
 
         if valid > 0:
             from app.tasks.feature_engineering import compute_features

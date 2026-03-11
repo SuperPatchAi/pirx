@@ -311,3 +311,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: No API contract changes. Same endpoint shapes; fields that were null before will now contain real values.
 - **Verification**: Full backend suite passes (564 tests). No frontend code modified.
+
+## README Delta - Terra Data Loading Fix (Backend-Only)
+
+- **What changed**: Backend-only fix for stale `terra_user_id` causing 404s on backfill, silent data drops when `reference_id` is missing from webhooks, and invisible processing logs. No frontend code changes.
+- **Why it changed**: After hitting sync, Celery backfill called Terra REST API with a stale `terra_user_id` (returning 404), and webhook handlers silently skipped data when `reference_id` was absent. Frontend was already wired to display the data -- the backend just wasn't storing it.
+- **Code touchpoints**: Backend files only (`sync.py`, `sync_tasks.py`, `terra.py`, `tests/test_terra.py`).
+- **Data-flow impact**: No frontend changes. Existing `/physiology/latest` and `/physiology/trends` consumers will automatically see data once the backend correctly ingests it.
+- **Formula/constant changes**: none.
+- **API/schema impact**: No API contract changes. Same endpoint shapes.
+- **Verification**: Full backend suite passes (573 tests). No frontend code modified.

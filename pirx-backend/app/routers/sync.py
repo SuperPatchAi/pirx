@@ -20,6 +20,45 @@ strava_service = StravaService()
 terra_service = TerraService()
 
 
+def _resolve_pirx_user_id(db: SupabaseService, terra_user_id: str, reference_id: str | None) -> str | None:
+    """Resolve the PIRX user_id from a Terra webhook user object.
+
+    Tries reference_id first; falls back to wearable_connections lookup by terra_user_id.
+    """
+    if reference_id:
+        return reference_id
+    try:
+        result = (
+            db.client.table("wearable_connections")
+            .select("user_id")
+            .eq("terra_user_id", terra_user_id)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            logger.info("Resolved PIRX user via terra_user_id lookup: terra=%s -> pirx=%s", terra_user_id, result.data[0]["user_id"])
+            return result.data[0]["user_id"]
+    except Exception:
+        logger.exception("Failed to look up PIRX user by terra_user_id=%s", terra_user_id)
+    return None
+
+
+def _sync_terra_user_id(db: SupabaseService, terra_user_id: str, pirx_user_id: str, provider: str):
+    """Keep wearable_connections.terra_user_id fresh from every data webhook."""
+    try:
+        db.client.table("wearable_connections").upsert(
+            {
+                "user_id": pirx_user_id,
+                "provider": provider.lower(),
+                "terra_user_id": terra_user_id,
+                "is_active": True,
+            },
+            on_conflict="user_id,provider",
+        ).execute()
+    except Exception:
+        logger.exception("Failed to sync terra_user_id for user=%s provider=%s", pirx_user_id, provider)
+
+
 @router.get("/status")
 async def get_sync_status(user: dict = Depends(get_current_user)):
     """Get wearable connection status for the current user."""
@@ -195,10 +234,11 @@ async def terra_webhook(request: Request):
         logger.warning("Terra webhook signature verification failed")
         return JSONResponse({"status": "signature_invalid"}, status_code=403)
     logger.warning(
-        "Terra webhook received: type=%s status=%s user=%s data_count=%d",
+        "Terra webhook received: type=%s status=%s terra_user=%s reference_id=%s data_count=%d",
         payload.type,
         payload.status,
         payload.user.user_id if payload.user else "none",
+        payload.user.reference_id if payload.user else "none",
         len(payload.data) if payload.data else 0,
     )
 
@@ -225,7 +265,7 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to store Terra connection")
 
-    elif payload.type == "activity" and payload.data:
+    elif payload.type == "activity" and payload.data and payload.user:
         normalized = []
         for activity_data in payload.data:
             try:
@@ -234,10 +274,11 @@ async def terra_webhook(request: Request):
                 logger.exception("Failed to normalize Terra activity")
         logger.warning("Normalized %d Terra activities", len(normalized))
 
-        if normalized and payload.user and payload.user.reference_id:
-            user_id = payload.user.reference_id
+        db = SupabaseService()
+        user_id = _resolve_pirx_user_id(db, payload.user.user_id, payload.user.reference_id)
+        if normalized and user_id:
             provider_source = (payload.user.provider or "terra").lower()
-            db = SupabaseService()
+            _sync_terra_user_id(db, payload.user.user_id, user_id, provider_source)
             stored = 0
             skipped = 0
             for idx, (raw_act, activity) in enumerate(zip(payload.data, normalized)):
@@ -283,14 +324,23 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to queue feature engineering for user %s", user_id)
 
-    elif payload.type == "sleep" and payload.data and payload.user and payload.user.reference_id:
-        user_id = payload.user.reference_id
+    elif payload.type == "sleep" and payload.data and payload.user:
         db = SupabaseService()
+        user_id = _resolve_pirx_user_id(db, payload.user.user_id, payload.user.reference_id)
+        if not user_id:
+            logger.warning("Terra sleep webhook: could not resolve PIRX user for terra_user=%s", payload.user.user_id)
+            return {"status": "ok"}
+        provider_source = (payload.user.provider or "terra").lower()
+        _sync_terra_user_id(db, payload.user.user_id, user_id, provider_source)
         stored = 0
         skipped = 0
         for sleep_payload in payload.data:
             try:
                 normalized = TerraService.normalize_sleep_entry(sleep_payload)
+                logger.warning(
+                    "Terra sleep normalized: sleep_score=%s resting_hr=%s hrv=%s",
+                    normalized.get("sleep_score"), normalized.get("resting_hr"), normalized.get("hrv"),
+                )
                 if normalized.get("sleep_score") is None and normalized.get("resting_hr") is None and normalized.get("hrv") is None:
                     skipped += 1
                     continue
@@ -298,7 +348,7 @@ async def terra_webhook(request: Request):
                 stored += 1
             except Exception:
                 logger.exception("Failed to insert Terra sleep entry for user %s", user_id)
-        logger.info(
+        logger.warning(
             "Terra sleep webhook processed: user=%s stored=%d skipped=%d total=%d",
             user_id, stored, skipped, len(payload.data),
         )
@@ -309,15 +359,25 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to queue feature engineering after Terra sleep for user %s", user_id)
 
-    elif payload.type == "body" and payload.data and payload.user and payload.user.reference_id:
-        user_id = payload.user.reference_id
+    elif payload.type == "body" and payload.data and payload.user:
         db = SupabaseService()
+        user_id = _resolve_pirx_user_id(db, payload.user.user_id, payload.user.reference_id)
+        if not user_id:
+            logger.warning("Terra body webhook: could not resolve PIRX user for terra_user=%s", payload.user.user_id)
+            return {"status": "ok"}
+        provider_source = (payload.user.provider or "terra").lower()
+        _sync_terra_user_id(db, payload.user.user_id, user_id, provider_source)
         stored = 0
         skipped = 0
         for body_payload in payload.data:
             try:
                 normalized = TerraService.normalize_body_entry(body_payload)
                 custom = normalized.get("custom_fields") or {}
+                logger.warning(
+                    "Terra body normalized: resting_hr=%s hrv=%s weight=%s body_fat=%s bmi=%s",
+                    normalized.get("resting_hr"), normalized.get("hrv"),
+                    custom.get("weight_kg"), custom.get("body_fat_percentage"), custom.get("bmi"),
+                )
                 if custom.get("weight_kg") is None and custom.get("body_fat_percentage") is None and custom.get("bmi") is None:
                     skipped += 1
                     continue
@@ -325,7 +385,7 @@ async def terra_webhook(request: Request):
                 stored += 1
             except Exception:
                 logger.exception("Failed to insert Terra body entry for user %s", user_id)
-        logger.info(
+        logger.warning(
             "Terra body webhook processed: user=%s stored=%d skipped=%d total=%d",
             user_id, stored, skipped, len(payload.data),
         )
@@ -378,15 +438,25 @@ async def terra_webhook(request: Request):
             except Exception:
                 logger.exception("Failed to update Terra connection on user_reauth")
 
-    elif payload.type == "daily" and payload.data and payload.user and payload.user.reference_id:
-        user_id = payload.user.reference_id
+    elif payload.type == "daily" and payload.data and payload.user:
         db = SupabaseService()
+        user_id = _resolve_pirx_user_id(db, payload.user.user_id, payload.user.reference_id)
+        if not user_id:
+            logger.warning("Terra daily webhook: could not resolve PIRX user for terra_user=%s", payload.user.user_id)
+            return {"status": "ok"}
+        provider_source = (payload.user.provider or "terra").lower()
+        _sync_terra_user_id(db, payload.user.user_id, user_id, provider_source)
         stored = 0
         skipped = 0
         for daily_payload in payload.data:
             try:
                 normalized = TerraService.normalize_daily_entry(daily_payload)
                 custom = normalized.get("custom_fields") or {}
+                logger.warning(
+                    "Terra daily normalized: sleep_score=%s resting_hr=%s hrv=%s weight=%s body_fat=%s bmi=%s",
+                    normalized.get("sleep_score"), normalized.get("resting_hr"), normalized.get("hrv"),
+                    custom.get("weight_kg"), custom.get("body_fat_percentage"), custom.get("bmi"),
+                )
                 if (
                     normalized.get("sleep_score") is None
                     and normalized.get("resting_hr") is None
@@ -401,7 +471,7 @@ async def terra_webhook(request: Request):
                 stored += 1
             except Exception:
                 logger.exception("Failed to insert Terra daily entry for user %s", user_id)
-        logger.info(
+        logger.warning(
             "Terra daily webhook processed: user=%s stored=%d skipped=%d total=%d",
             user_id,
             stored,

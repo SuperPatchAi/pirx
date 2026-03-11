@@ -17,6 +17,7 @@ class ProjectionResponse(BaseModel):
     model_source: Optional[str] = None
     model_confidence: Optional[float] = None
     fallback_reason: Optional[str] = None
+    twenty_one_day_change: Optional[float] = None
 
 
 class ProjectionHistoryPoint(BaseModel):

@@ -164,7 +164,8 @@ def _format_pace(sec_per_km: float) -> str:
 
 
 def _build_economy_band(hr_range: str, baseline_sec: float, current_sec: float) -> dict:
-    gain = round(baseline_sec - current_sec, 1)
+    # Positive means faster pace at same HR band (better economy).
+    gain = round(((baseline_sec - current_sec) / baseline_sec) * 100, 1) if baseline_sec > 0 else 0.0
     return {
         "hr_range": hr_range,
         "baseline_pace": _format_pace(baseline_sec),
@@ -227,11 +228,27 @@ async def get_running_economy(user: dict = Depends(get_current_user)):
     import statistics
     current_pace = round(statistics.mean(current_window_paces), 1)
     baseline_pace = round(statistics.mean(baseline_window_paces), 1)
+    # Negative means lower physiological cost vs baseline at matched HR band.
+    hr_cost_change = (
+        round(((current_pace - baseline_pace) / baseline_pace) * 100, 1)
+        if baseline_pace > 0
+        else 0.0
+    )
 
     return {
         "matched_hr_band": _build_economy_band(f"{HR_LOW}-{HR_HIGH} bpm", baseline_pace, current_pace),
-        "hr_cost_change": 0,
+        "hr_cost_change": hr_cost_change,
         "intensity_levels": [],
+        "explanation": {
+            "hr_range": f"{HR_LOW}-{HR_HIGH} bpm",
+            "current_window_days": 21,
+            "baseline_window_days": 21,
+            "current_sample_size": len(current_window_paces),
+            "baseline_sample_size": len(baseline_window_paces),
+            "efficiency_gain_formula": "((baseline_pace - current_pace) / baseline_pace) * 100",
+            "hr_cost_change_formula": "((current_pace - baseline_pace) / baseline_pace) * 100",
+            "note": "Positive efficiency gain means faster pace at the same HR band. Negative HR cost means lower physiological cost vs baseline.",
+        },
     }
 
 

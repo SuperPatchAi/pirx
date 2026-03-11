@@ -538,6 +538,16 @@ interface EconomyData {
   matched_hr_band: { hr_range: string; baseline_pace: string; current_pace: string; efficiency_gain: number };
   hr_cost_change: number;
   intensity_levels: { level: string; baseline: string; current: string; delta: number }[];
+  explanation?: {
+    hr_range?: string;
+    current_window_days?: number;
+    baseline_window_days?: number;
+    current_sample_size?: number;
+    baseline_sample_size?: number;
+    efficiency_gain_formula?: string;
+    hr_cost_change_formula?: string;
+    note?: string;
+  };
 }
 
 function EconomyTab({ data, loading }: { data: EconomyData | null; loading: boolean }) {
@@ -620,6 +630,53 @@ function EconomyTab({ data, loading }: { data: EconomyData | null; loading: bool
           </CardContent>
         </Card>
       )}
+      <Collapsible>
+        <Card className="border-border/40">
+          <CollapsibleTrigger asChild>
+            <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
+              <span className="text-sm font-medium">Why this number?</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 pb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">HR Band</p>
+                  <p className="font-medium">{data.explanation?.hr_range ?? data.matched_hr_band.hr_range}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Samples (current / baseline)</p>
+                  <p className="font-medium tabular-nums">
+                    {(data.explanation?.current_sample_size ?? "—")}/{(data.explanation?.baseline_sample_size ?? "—")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Current Window</p>
+                  <p className="font-medium">{data.explanation?.current_window_days ?? 21} days</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Baseline Window</p>
+                  <p className="font-medium">{data.explanation?.baseline_window_days ?? 21} days</p>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-md border border-border/50 p-3">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Formulas</p>
+                <p className="text-xs text-muted-foreground break-words">
+                  Efficiency Gain: {data.explanation?.efficiency_gain_formula ?? "((baseline_pace - current_pace) / baseline_pace) * 100"}
+                </p>
+                <p className="text-xs text-muted-foreground break-words">
+                  HR Cost Change: {data.explanation?.hr_cost_change_formula ?? "((current_pace - baseline_pace) / baseline_pace) * 100"}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {data.explanation?.note ??
+                  "Interpretation: positive efficiency gain is better (faster pace at same HR). Negative HR cost is better (lower cost)."}
+              </p>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }
@@ -735,6 +792,9 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
   const riskFactor = (data.factors ?? []).find((f) =>
     `${f.title ?? ""} ${f.detail ?? ""}`.toLowerCase().includes("injury")
   );
+  const injuryFactors = (data.factors ?? []).filter((f) =>
+    `${f.title ?? ""} ${f.detail ?? ""}`.toLowerCase().includes("injury")
+  );
 
   if (riskScore == null) {
     return <NoData message="Injury risk signal is not available yet for this athlete." />;
@@ -766,6 +826,46 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
           </p>
         </CardContent>
       </Card>
+      <Collapsible>
+        <Card className="border-border/40">
+          <CollapsibleTrigger asChild>
+            <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
+              <span className="text-sm font-medium">Why this number?</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 pb-4 space-y-3">
+              {injuryFactors.length > 0 ? (
+                injuryFactors.map((f, idx) => {
+                  const impact = (f.impact ?? "neutral").toLowerCase();
+                  const impactClass =
+                    impact === "negative"
+                      ? "text-red-400"
+                      : impact === "positive"
+                        ? "text-green-500"
+                        : "text-yellow-400";
+                  return (
+                    <div key={`${f.title ?? "factor"}-${idx}`} className="rounded-md border border-border/50 p-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium">{f.title ?? "Injury Risk Signal"}</p>
+                        <span className={`text-[10px] uppercase tracking-wider font-semibold ${impactClass}`}>
+                          {impact}
+                        </span>
+                      </div>
+                      {f.detail && <p className="text-xs text-muted-foreground">{f.detail}</p>}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Breakdown not available yet. Sync additional workouts and physiology inputs to improve injury risk attribution detail.
+                </p>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }
@@ -1427,7 +1527,12 @@ export default function PerformancePage() {
                   }));
                 }
               }
-              setReadinessData({ score: d.score ?? 0, label: d.label ?? "Unknown", components });
+              setReadinessData({
+                score: d.score ?? 0,
+                label: d.label ?? "Unknown",
+                components,
+                factors: Array.isArray(d.factors) ? d.factors : [],
+              });
               const injuryRiskVal = d.components?.injury_risk;
               setModelRiskMeta((prev) => ({
                 ...prev,

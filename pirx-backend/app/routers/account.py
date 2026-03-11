@@ -166,11 +166,17 @@ async def get_baseline(user: dict = Depends(get_current_user)):
     db = SupabaseService()
     user_data = db.get_user(user["user_id"])
     if user_data:
+        baseline_source = user_data.get("baseline_source") or "auto"
+        baseline_event = user_data.get("baseline_event") or "5000"
+        # Auto/knn/cold-start baselines are 5K-native estimates.
+        # Normalize legacy rows that may have a mismatched short-distance label.
+        if baseline_source in {"auto", "knn_cold_start", "cold_start"}:
+            baseline_event = "5000"
         return {
-            "event": user_data.get("baseline_event") or "5000",
+            "event": baseline_event,
             "time_seconds": user_data.get("baseline_time_seconds") or 1260.0,
             "race_date": user_data.get("baseline_race_date"),
-            "source": user_data.get("baseline_source") or "auto",
+            "source": baseline_source,
         }
     return {"event": "5000", "time_seconds": 1260.0, "race_date": None, "source": "auto"}
 

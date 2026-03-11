@@ -23,7 +23,7 @@ const EMPTY_PROJECTION = {
   projected_time: "—",
   supported_range: "—",
   total_improvement_seconds: 0,
-  twenty_one_day_change: 0,
+  twenty_one_day_change: null as number | null,
 };
 
 function formatTime(seconds: number): string {
@@ -67,6 +67,13 @@ function getProjectedTimeLabel(p: {
         ? Number(rawSeconds)
         : NaN;
   return Number.isFinite(seconds) ? formatTime(seconds) : "—";
+}
+
+function format21DayDeltaLabel(value: number | string | null | undefined): string {
+  if (value == null) return "—";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || Math.abs(n) < 0.05) return "—";
+  return `${n > 0 ? "+" : ""}${n}s`;
 }
 
 export default function DashboardPage() {
@@ -199,10 +206,7 @@ export default function DashboardPage() {
               event: String(p.event ?? ""),
               displayName: p.display_name ?? formatEventLabel(String(p.event ?? "")),
               projectedTime: getProjectedTimeLabel(p),
-              change:
-                p.twenty_one_day_change != null
-                  ? `${Number(p.twenty_one_day_change) > 0 ? "+" : ""}${Number(p.twenty_one_day_change)}s`
-                  : "—",
+              change: format21DayDeltaLabel(p.twenty_one_day_change),
             }))
           );
         }
@@ -279,7 +283,11 @@ export default function DashboardPage() {
     ? ((projection.supported_range_display as string) ?? `${formatTime(projection.supported_range_low as number)} – ${formatTime(projection.supported_range_high as number)}`)
     : EMPTY_PROJECTION.supported_range;
   const improvement = (projection?.total_improvement_seconds as number) ?? EMPTY_PROJECTION.total_improvement_seconds;
-  const change21d = (projection?.twenty_one_day_change as number) ?? EMPTY_PROJECTION.twenty_one_day_change;
+  const rawChange21d = projection?.twenty_one_day_change as number | null | undefined;
+  const change21d =
+    typeof rawChange21d === "number" && Number.isFinite(rawChange21d) && Math.abs(rawChange21d) >= 0.05
+      ? rawChange21d
+      : null;
   const modelSource = (projection?.model_source as string | undefined) ?? null;
   const modelConfidence = (projection?.model_confidence as number | undefined) ?? null;
   const fallbackReason = (projection?.fallback_reason as string | undefined) ?? null;

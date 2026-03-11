@@ -43,6 +43,8 @@ class ProjectionService:
             manual_baseline = user_data.get("baseline_time_seconds")
             baseline_event = user_data.get("baseline_event") or "5000"
             baseline_source = user_data.get("baseline_source") or ""
+            if baseline_source in {"auto", "knn_cold_start", "cold_start"}:
+                baseline_event = "5000"
 
             ml_baseline = self._estimate_baseline(user_id)
             ml_is_default = abs(ml_baseline - 1500.0) < 1

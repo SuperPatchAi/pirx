@@ -711,3 +711,53 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none.
 - **API/schema impact**: none.
 - **Verification**: Manual dashboard validation after sync confirms all event cards render non-zero projection labels when backend rows exist.
+
+## README Delta - 21-Day Delta Null Handling
+
+- **What changed**: Projection APIs now return `twenty_one_day_change` as nullable (no forced `0` default), and dashboard cards render `—` when 21-day deltas are missing/near-zero.
+- **Why it changed**: Prevent misleading `0s` values in dashboard event cards and projection tile when no meaningful 21-day delta is available.
+- **Code touchpoints**: `pirx-backend/app/models/projection.py`, `pirx-backend/app/routers/projection.py`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/components/home/projection-tile.tsx`.
+- **Data-flow impact**: Projection API read response semantics and frontend display formatting only.
+- **Formula/constant changes**: none.
+- **API/schema impact**: additive `ProjectionResponse.twenty_one_day_change` field (nullable) and `/projection/all` now passes through nullable deltas instead of defaulting to `0`.
+- **Verification**: Ran `python -m pytest tests/test_projection_endpoints.py -q` (8 passed) and `npm run -s test -- "src/components/home/__tests__/projection-tile.test.tsx"` (1 passed).
+
+## README Delta - Baseline Event Normalization for Auto Sources
+
+- **What changed**: Baseline reads and projection recompute now normalize `baseline_event` to `5000` when `baseline_source` is `auto`, `knn_cold_start`, or `cold_start`.
+- **Why it changed**: Prevent legacy mismatches like `1500m - 21:00` where a 5K-native auto baseline was labeled as a short-distance event.
+- **Code touchpoints**: `pirx-backend/app/routers/account.py`, `pirx-backend/app/services/projection_service.py`.
+- **Data-flow impact**: Baseline read path and projection baseline-scaling stage.
+- **Formula/constant changes**: none.
+- **API/schema impact**: no schema changes; `/account/baseline` semantics now normalize legacy auto-source baseline-event labels.
+- **Verification**: Ran `python -m pytest tests/test_account.py tests/test_services_wiring.py tests/test_projection_endpoints.py -q` (55 passed) and validated production user baseline normalized to `5000`.
+
+## README Delta - Injury Risk Why-Number Breakdown
+
+- **What changed**: Performance Injury Risk analysis now includes an expandable `Why this number?` section with factor-level risk explanation cards.
+- **Why it changed**: Improve transparency by showing explicit injury-related readiness factors and their impact direction.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/readiness.py`.
+- **Data-flow impact**: Frontend analysis rendering only (consumes existing readiness factor payload).
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Manual Performance analysis check confirms expandable injury factor breakdown renders from `/readiness.factors` data.
+
+## README Delta - Economy HR Cost Computation
+
+- **What changed**: `/features/economy` now computes `hr_cost_change` from matched-HR baseline vs current pace instead of returning a hardcoded `0`.
+- **Why it changed**: Running economy cards showed `0%` even when matched-HR pace data clearly indicated change.
+- **Code touchpoints**: `pirx-backend/app/routers/features.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Features API read path for Performance economy analysis.
+- **Formula/constant changes**: `hr_cost_change = ((current_pace - baseline_pace) / baseline_pace) * 100`; matched-band `efficiency_gain` now uses percent improvement at matched HR.
+- **API/schema impact**: no schema changes; same response fields with corrected computed values.
+- **Verification**: Ran `python -m pytest tests/test_features_endpoints.py -q` (25 passed).
+
+## README Delta - Economy Why-Number Explainability
+
+- **What changed**: Added explainability metadata to `/features/economy` and rendered a `Why this number?` expandable section in Performance -> Running Economy.
+- **Why it changed**: Provide transparent context (sample sizes, windows, formulas) for HR cost and efficiency values, consistent with other explainability modules.
+- **Code touchpoints**: `pirx-backend/app/routers/features.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Features API read path and frontend economy analysis rendering.
+- **Formula/constant changes**: none (same formulas, now surfaced explicitly).
+- **API/schema impact**: additive `explanation` object in `/features/economy` response.
+- **Verification**: Backend economy endpoint tests pass (`25 passed`) and frontend lints clean.

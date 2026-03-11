@@ -44,6 +44,7 @@ def _mock_projection(event: str) -> ProjectionResponse:
         model_source=None,
         model_confidence=None,
         fallback_reason=None,
+        twenty_one_day_change=None,
     )
 
 
@@ -86,6 +87,7 @@ async def get_projection(
             model_source=projection.get("model_type"),
             model_confidence=projection.get("confidence_score"),
             fallback_reason=projection.get("fallback_reason"),
+            twenty_one_day_change=projection.get("twenty_one_day_change"),
         )
 
     return _mock_projection(event)
@@ -259,7 +261,7 @@ async def get_all_projections(user: dict = Depends(get_current_user)):
                     "supported_range_low": projection.get("range_low_seconds", midpoint * 0.97),
                     "supported_range_high": projection.get("range_high_seconds", midpoint * 1.03),
                     "total_improvement_seconds": projection.get("baseline_seconds", midpoint + 78) - midpoint,
-                    "twenty_one_day_change": projection.get("twenty_one_day_change", 0),
+                    "twenty_one_day_change": projection.get("twenty_one_day_change"),
                     "model_source": projection.get("model_type"),
                     "model_confidence": projection.get("confidence_score"),
                     "fallback_reason": projection.get("fallback_reason"),

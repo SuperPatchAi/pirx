@@ -10,7 +10,7 @@ interface ProjectionTileProps {
   projectedTime: string;
   range: string;
   improvementSeconds: number;
-  twentyOneDayChange: number;
+  twentyOneDayChange: number | null;
   modelSource?: string | null;
   modelConfidence?: number | null;
   fallbackReason?: string | null;
@@ -95,6 +95,9 @@ export function ProjectionTile({
     }
   }
 
+  const has21DayDelta =
+    typeof twentyOneDayChange === "number" && Number.isFinite(twentyOneDayChange);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -152,7 +155,9 @@ export function ProjectionTile({
             </div>
             <div>
               <p className="text-xs text-muted-foreground mb-0.5">
-                {twentyOneDayChange > 0 ? "-" : "+"}{Math.abs(twentyOneDayChange).toFixed(1)}s
+                {has21DayDelta
+                  ? `${twentyOneDayChange > 0 ? "-" : "+"}${Math.abs(twentyOneDayChange).toFixed(1)}s`
+                  : "—"}
               </p>
               <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">21-day</p>
             </div>

@@ -221,3 +221,53 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: no contract changes; parser is backward/forward compatible with existing payload variants.
 - **Verification**: Manual dashboard check after sync/recompute confirms non-5K cards render event-specific projected times.
+
+## README Delta - Dashboard 21-Day Delta Display Guardrail
+
+- **What changed**: Dashboard event cards and projection tile now show `—` for missing or near-zero 21-day deltas instead of always rendering `0s`.
+- **Why it changed**: Avoid implying a measured zero shift when the backend has no reliable 21-day delta for that event snapshot.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-backend/app/routers/projection.py`.
+- **Data-flow impact**: Frontend projection display formatting.
+- **Formula/constant changes**: display epsilon guardrail for delta labels (`abs(delta) < 0.05` -> `—`).
+- **API/schema impact**: no new API fields; uses nullable delta from existing projection endpoints.
+- **Verification**: `src/components/home/__tests__/projection-tile.test.tsx` passes and dashboard no longer shows spurious `0s` deltas for unset events.
+
+## README Delta - Baseline Display Consistency
+
+- **What changed**: Baseline race display now consumes backend-normalized auto baseline events so historical 5K defaults are not mislabeled as short-distance events.
+- **Why it changed**: Remove confusing baseline labels such as `1500m - 21:00` that came from legacy baseline-event/source mismatches.
+- **Code touchpoints**: `pirx-backend/app/routers/account.py`, `pirx-backend/app/services/projection_service.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Baseline metadata read/display path in Performance overview.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Production baseline read now returns `5000` for auto-source baseline rows and Performance baseline card reflects the corrected label.
+
+## README Delta - Injury Risk Explainability Section
+
+- **What changed**: Added a `Why this number?` expandable explainability block inside the Performance Injury Risk card.
+- **Why it changed**: Align injury-risk UX with other explainability surfaces and provide factor-level context for risk score interpretation.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/readiness.py`.
+- **Data-flow impact**: Frontend now renders readiness factor details (`title`, `detail`, `impact`) directly in Injury Risk analysis.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none; uses existing `/readiness` `factors` payload.
+- **Verification**: Manual UI validation in Performance -> Analysis -> Injury Risk confirms expandable factor breakdown is shown when factors are present.
+
+## README Delta - Economy HR Cost Values
+
+- **What changed**: Performance economy card now receives computed `hr_cost_change` values from backend instead of a static `0%`.
+- **Why it changed**: Users were seeing `0%` despite visible matched-HR pace differences.
+- **Code touchpoints**: `pirx-backend/app/routers/features.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Economy tab read path (`GET /features/economy`).
+- **Formula/constant changes**: backend returns percentage-based cost/economy deltas derived from baseline/current matched-HR pace windows.
+- **API/schema impact**: none (field names unchanged).
+- **Verification**: Backend `tests/test_features_endpoints.py` passes; UI now displays non-zero HR cost change when matched-HR pace shifts.
+
+## README Delta - Economy Why-This-Number Panel
+
+- **What changed**: Added a `Why this number?` collapsible panel to the Performance Economy tab.
+- **Why it changed**: Show calculation context for economy metrics so users can interpret `efficiency_gain` and `hr_cost_change` with confidence.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/features.py`.
+- **Data-flow impact**: Economy tab now reads additive `explanation` metadata from `/features/economy`.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none (additive response metadata only).
+- **Verification**: Backend economy endpoint tests pass; frontend lints clean for updated Economy tab rendering.

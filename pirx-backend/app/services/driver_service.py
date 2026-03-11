@@ -68,7 +68,7 @@ class DriverService:
             )
             return projection_state, driver_states
 
-        twenty_one_day_change = 0.0
+        twenty_one_day_change = None
         try:
             from datetime import datetime, timedelta, timezone
             cutoff = (datetime.now(timezone.utc) - timedelta(days=21)).isoformat()
@@ -82,12 +82,20 @@ class DriverService:
                 .limit(1)
                 .execute()
             )
+            old_time = None
             if old_proj.data:
-                old_time = old_proj.data[0].get("midpoint_seconds") or 0
-                if old_time > 0:
-                    twenty_one_day_change = round(
-                        old_time - projection_state.projected_time_seconds, 2
-                    )
+                candidate = old_proj.data[0].get("midpoint_seconds")
+                if candidate:
+                    old_time = candidate
+            elif previous_projection and previous_projection.projected_time_seconds:
+                # Fallback when 21-day anchor is not available yet (newly created
+                # event rows): use the prior snapshot so UI can show a real delta.
+                old_time = previous_projection.projected_time_seconds
+
+            if old_time and old_time > 0:
+                twenty_one_day_change = round(
+                    old_time - projection_state.projected_time_seconds, 2
+                )
         except Exception:
             pass
 

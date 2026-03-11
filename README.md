@@ -618,3 +618,16 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: Rollout bucket logic uses stable user hash `% 100 < lstm_serving_rollout_percentage`.
 - **API/schema impact**: No API or schema shape changes; uses existing `model_metrics` contract (`metric_type = model_serving_decision`, `model_type = event_<distance>`).
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (99 passed).
+
+## README Delta - Rollout Status APIs
+
+- **What changed**: Added rollout operational endpoints `/rollout/config` and `/rollout/metrics` for runtime flag visibility and serving-decision aggregation.
+- **Why it changed**: Provide a direct operational control surface to monitor rollout posture and serving behavior without manual database inspection.
+- **Code touchpoints**: `pirx-backend/app/routers/rollout.py`, `pirx-backend/app/main.py`, `pirx-backend/tests/test_rollout.py`.
+- **Data-flow impact**: Reads `Settings` rollout flags and aggregates `model_metrics` (`metric_type = model_serving_decision`) by event/model type for configurable trailing window.
+- **Formula/constant changes**: none.
+- **API/schema impact**: New additive endpoints:
+  - `GET /rollout/config`
+  - `GET /rollout/metrics?days=<1..90>`
+  No schema changes.
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py tests/test_rollout.py -q` in `pirx-backend` (101 passed).

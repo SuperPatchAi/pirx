@@ -255,6 +255,27 @@ class TestProjectionService:
         assert decision.reason == "default_production_path"
 
     @patch("app.services.supabase_client.get_supabase_client")
+    def test_orchestrator_reads_promotion_confidence_from_registry(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+        with patch.object(
+            svc.orchestrator.db,
+            "get_active_model",
+            return_value={
+                "model_family": "lstm",
+                "metadata": {"promotion_confidence": 0.84},
+            },
+        ):
+            decision = svc.orchestrator.select_projection_model("u1", "5000", MOCK_FEATURES)
+        assert decision.model_type == "lstm"
+        assert decision.confidence == 0.84
+
+    @patch("app.services.supabase_client.get_supabase_client")
     def test_non_deterministic_selection_falls_back_to_deterministic_path(self, mock_sb):
         mock_client = MagicMock()
         mock_sb.return_value = mock_client

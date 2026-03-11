@@ -578,3 +578,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: Added bounded LSTM adapter heuristic adjustment over baseline and confidence clamp `[0, 1]`; deterministic engine formulas are unchanged.
 - **API/schema impact**: No contract break; existing optional projection metadata (`model_source`, `model_confidence`, `fallback_reason`) is now populated from active LSTM serve path when available.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (92 passed).
+
+## README Delta - Optuna Promotion Guardrails
+
+- **What changed**: Added promotion guardrails in `tune_user_lstm` to compute best trial metrics, persist study completion summaries, and only activate new LSTM models when they meet a threshold; non-qualifying models are marked inactive.
+- **Why it changed**: Prevent low-quality tuned candidates from entering serving while preserving auditable trial/study outcomes and predictable rollout behavior.
+- **Code touchpoints**: `pirx-backend/app/tasks/ml_tasks.py`, `pirx-backend/app/services/supabase_client.py`, `pirx-backend/app/services/model_orchestrator.py`, `pirx-backend/tests/test_ml_tasks.py`, `pirx-backend/tests/test_supabase_client.py`, `pirx-backend/tests/test_services_wiring.py`.
+- **Data-flow impact**: Optuna tuning jobs now write `best_value`/`best_trial_number` to study records, deactivate superseded active LSTM models on promotion, and attach promotion confidence metadata consumed by model selection.
+- **Formula/constant changes**: Added tuning promotion threshold `best_value <= 0.34`; promotion confidence derived as `clamp(1 - best_value, 0, 1)`.
+- **API/schema impact**: No schema changes; projection metadata confidence can now be sourced from promoted model registry metadata.
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (94 passed).

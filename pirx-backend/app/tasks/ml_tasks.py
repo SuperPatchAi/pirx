@@ -6,6 +6,15 @@ from app.tasks import celery_app
 logger = logging.getLogger(__name__)
 
 
+def _simulate_optuna_trials(sample_size: int) -> list[float]:
+    """Generate deterministic trial losses for scaffolding and tests."""
+    if sample_size >= 120:
+        return [0.29, 0.31, 0.33]
+    if sample_size >= 60:
+        return [0.32, 0.34, 0.36]
+    return [0.35, 0.37, 0.39]
+
+
 @celery_app.task(name="app.tasks.ml_tasks.train_user_lstm")
 def train_user_lstm(user_id: str) -> dict:
     """Train per-user LSTM model (scaffold).
@@ -148,15 +157,25 @@ def tune_user_lstm(user_id: str) -> dict:
             }
         )
         study_id = study.get("study_id")
-        for trial_num in range(3):
+        trial_values = _simulate_optuna_trials(len(activities))
+        for trial_num, trial_value in enumerate(trial_values):
             db.create_optuna_trial(
                 {
                     "study_id": study_id,
                     "trial_number": trial_num,
                     "state": "COMPLETE",
-                    "value": round(0.3 + trial_num * 0.02, 4),
+                    "value": round(trial_value, 4),
                     "params": {"hidden_units": 64 + trial_num * 32, "dropout": 0.2 + trial_num * 0.05},
                 }
+            )
+        best_trial_num = min(range(len(trial_values)), key=lambda i: trial_values[i])
+        best_value = float(trial_values[best_trial_num])
+        if study_id:
+            db.update_optuna_study(
+                study_id=study_id,
+                best_value=best_value,
+                best_trial_number=best_trial_num,
+                status="completed",
             )
 
         db.insert_model_metric(
@@ -169,11 +188,54 @@ def tune_user_lstm(user_id: str) -> dict:
                 "computed_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+        promotion_threshold = 0.34
+        promoted = best_value <= promotion_threshold
+        status = "completed"
+        if promoted and model_id:
+            db.deactivate_active_models(
+                user_id=user_id,
+                event="5000",
+                model_family="lstm",
+                exclude_model_id=model_id,
+            )
+            db.add_model_artifact(
+                {
+                    "model_id": model_id,
+                    "job_id": job_id,
+                    "artifact_type": "metrics",
+                    "storage_uri": f"local://models/{user_id}/lstm/{version}.metrics.json",
+                    "metadata": {
+                        "best_value": best_value,
+                        "best_trial_number": best_trial_num,
+                        "promotion_threshold": promotion_threshold,
+                        "promotion_confidence": round(max(0.0, min(1.0, 1.0 - best_value)), 4),
+                    },
+                }
+            )
+            db.update_model_registry_status(
+                model_id,
+                "active",
+                {
+                    "source": "ml_tasks.tune_user_lstm",
+                    "best_value": best_value,
+                    "best_trial_number": best_trial_num,
+                    "promotion_threshold": promotion_threshold,
+                    "promotion_confidence": round(max(0.0, min(1.0, 1.0 - best_value)), 4),
+                },
+            )
+        elif model_id:
+            db.update_model_registry_status(model_id, "inactive")
+            status = "completed_no_promotion"
         if job_id:
             db.update_model_training_job(job_id, "completed")
-        if model_id:
-            db.update_model_registry_status(model_id, "active")
-        return {"status": "completed", "user_id": user_id, "trials": 0}
+        return {
+            "status": status,
+            "user_id": user_id,
+            "trials": len(trial_values),
+            "best_value": best_value,
+            "best_trial_number": best_trial_num,
+            "promoted": promoted,
+        }
     except Exception as e:
         logger.exception("tune_user_lstm failed")
         return {"status": "error", "user_id": user_id, "error": str(e)}

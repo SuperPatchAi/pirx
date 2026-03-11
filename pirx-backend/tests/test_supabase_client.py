@@ -313,6 +313,14 @@ class TestModelLifecycleOperations:
         result = svc.create_model_training_job({"user_id": "u1", "job_type": "lstm_train"})
         assert result["job_id"] == "j1"
 
+    def test_update_model_registry_status_with_metadata(self, mock_supabase):
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+            {"model_id": "m1", "status": "active"}
+        ]
+        svc = SupabaseService()
+        result = svc.update_model_registry_status("m1", "active", {"promotion_confidence": 0.8})
+        assert result["status"] == "active"
+
     def test_get_active_model(self, mock_supabase):
         chain = (
             mock_supabase.table.return_value.select.return_value
@@ -331,6 +339,25 @@ class TestModelLifecycleOperations:
         assert study["study_id"] == "s1"
         trial = svc.create_optuna_trial({"study_id": "s1", "trial_number": 0, "state": "COMPLETE"})
         assert trial["study_id"] == "s1"
+
+    def test_update_optuna_study(self, mock_supabase):
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+            {"study_id": "s1", "status": "completed"}
+        ]
+        svc = SupabaseService()
+        result = svc.update_optuna_study("s1", best_value=0.31, best_trial_number=1)
+        assert result["status"] == "completed"
+
+    def test_deactivate_active_models(self, mock_supabase):
+        chain = (
+            mock_supabase.table.return_value.update.return_value
+            .eq.return_value.eq.return_value.eq.return_value.eq.return_value
+            .neq.return_value.execute
+        )
+        chain.return_value.data = [{"model_id": "m-old"}]
+        svc = SupabaseService()
+        result = svc.deactivate_active_models("u1", "5000", "lstm", exclude_model_id="m-new")
+        assert result["updated"] == 1
 
     def test_get_latest_model_artifact(self, mock_supabase):
         chain = (

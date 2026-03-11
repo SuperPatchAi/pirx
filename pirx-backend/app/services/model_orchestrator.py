@@ -35,10 +35,11 @@ class ModelOrchestrator:
             if active:
                 family = active.get("model_family")
                 if family in {"lstm", "knn"}:
+                    metadata = active.get("metadata") or {}
                     return ModelDecision(
                         model_type=family,
                         reason="active_model_registry",
-                        confidence=None,
+                        confidence=metadata.get("promotion_confidence"),
                     )
         except Exception:
             return ModelDecision(model_type="deterministic", reason="selector_error", confidence=None)

@@ -161,3 +161,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: no new frontend contract fields; existing optional projection metadata semantics expanded.
 - **Verification**: Backend projection/readiness/onboarding regression suite passes with metadata behavior changes.
+
+## README Delta - Confidence Provenance from Promotion
+
+- **What changed**: Documented that `model_confidence` can now be populated from Optuna promotion confidence metadata on active LSTM registry entries.
+- **Why it changed**: Keep frontend confidence display semantics aligned with backend promotion guardrails and tuned-model activation rules.
+- **Code touchpoints**: `pirx-backend/app/tasks/ml_tasks.py`, `pirx-backend/app/services/model_orchestrator.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-frontend/src/components/home/projection-tile.tsx`.
+- **Data-flow impact**: Projection confidence shown in dashboard/performance can reflect tuned-model quality instead of null/default values when promoted LSTM models are active.
+- **Formula/constant changes**: confidence derivation `clamp(1 - best_value, 0, 1)` (backend-driven).
+- **API/schema impact**: no API shape changes; existing `model_confidence` optional field semantics extended.
+- **Verification**: Backend regression suite passes with updated confidence propagation logic.

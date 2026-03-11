@@ -346,10 +346,13 @@ class SupabaseService:
         result = self.client.table("model_registry").insert(data).execute()
         return result.data[0] if result.data else data
 
-    def update_model_registry_status(self, model_id: str, status: str) -> dict:
+    def update_model_registry_status(self, model_id: str, status: str, metadata: dict | None = None) -> dict:
+        payload: dict = {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if metadata is not None:
+            payload["metadata"] = metadata
         result = (
             self.client.table("model_registry")
-            .update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .update(payload)
             .eq("model_id", model_id)
             .execute()
         )
@@ -391,6 +394,27 @@ class SupabaseService:
         result = self.client.table("optuna_studies").insert(data).execute()
         return result.data[0] if result.data else data
 
+    def update_optuna_study(
+        self,
+        study_id: str,
+        best_value: float,
+        best_trial_number: int,
+        status: str = "completed",
+    ) -> dict:
+        payload = {
+            "best_value": best_value,
+            "best_trial_number": best_trial_number,
+            "status": status,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = (
+            self.client.table("optuna_studies")
+            .update(payload)
+            .eq("study_id", study_id)
+            .execute()
+        )
+        return result.data[0] if result.data else {"study_id": study_id, **payload}
+
     def create_optuna_trial(self, data: dict) -> dict:
         result = self.client.table("optuna_trials").insert(data).execute()
         return result.data[0] if result.data else data
@@ -413,6 +437,26 @@ class SupabaseService:
     def insert_injury_risk_assessment(self, data: dict) -> dict:
         result = self.client.table("injury_risk_assessments").insert(data).execute()
         return result.data[0] if result.data else data
+
+    def deactivate_active_models(
+        self,
+        user_id: str,
+        event: str,
+        model_family: str,
+        exclude_model_id: str | None = None,
+    ) -> dict:
+        query = (
+            self.client.table("model_registry")
+            .update({"status": "inactive", "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("user_id", user_id)
+            .eq("event", event)
+            .eq("model_family", model_family)
+            .eq("status", "active")
+        )
+        if exclude_model_id:
+            query = query.neq("model_id", exclude_model_id)
+        result = query.execute()
+        return {"updated": len(result.data) if result.data else 0}
 
     # --- Chat Threads ---
 

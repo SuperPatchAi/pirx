@@ -151,3 +151,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: additive `projection_state.fallback_reason`; `projection_state.model_type` now permits `deterministic` alongside ML families.
 - **Verification**: Backend compatibility test suite for projection/readiness/onboarding/services wiring passes after metadata persistence updates.
+
+## README Delta - LSTM Projection Source Activation
+
+- **What changed**: Clarified that dashboard/performance projection metadata can now report `model_source = "lstm"` when an active model artifact is available, with deterministic fallback reason only when inference is unavailable.
+- **Why it changed**: Frontend provenance display needs to match phased serving behavior as LSTM paths become selectively active.
+- **Code touchpoints**: `pirx-backend/app/ml/lstm_inference.py`, `pirx-backend/app/services/projection_service.py`, `pirx-frontend/src/components/home/projection-tile.tsx`, `pirx-frontend/src/app/(app)/dashboard/page.tsx`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Existing projection metadata rendering now distinguishes active LSTM-serving rows from deterministic fallback rows.
+- **Formula/constant changes**: none.
+- **API/schema impact**: no new frontend contract fields; existing optional projection metadata semantics expanded.
+- **Verification**: Backend projection/readiness/onboarding regression suite passes with metadata behavior changes.

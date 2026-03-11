@@ -2,6 +2,7 @@ from app.ml.projection_engine import ProjectionEngine, ProjectionState
 from app.ml.event_scaling import EventScaler
 from app.ml.baseline_estimator import estimate_5k_baseline
 from app.ml.reference_population import estimate_5k_cold_start_knn
+from app.ml.lstm_inference import LSTMInferenceAdapter
 from app.services.supabase_client import SupabaseService
 from app.services.driver_service import DriverService
 from app.services.embedding_service import EmbeddingService
@@ -26,6 +27,7 @@ class ProjectionService:
         self.driver_service = DriverService()
         self.engine = ProjectionEngine()
         self.orchestrator = ModelOrchestrator()
+        self.lstm_inference = LSTMInferenceAdapter()
 
     def recompute(self, user_id: str, event: str, features: dict) -> Optional[ProjectionState]:
         """Full recompute pipeline for a single event.
@@ -88,7 +90,23 @@ class ProjectionService:
         )
         serving_model_type = model_decision.model_type
         fallback_reason = None
-        if model_decision.model_type != "deterministic":
+        model_confidence = model_decision.confidence
+        projected_time_override = None
+        if model_decision.model_type == "lstm":
+            prediction = self.lstm_inference.predict_projection_time(
+                user_id=user_id,
+                event=event,
+                features=features,
+                baseline_time_s=baseline_time,
+                previous_state=previous_state,
+            )
+            if prediction and prediction.get("predicted_seconds") is not None:
+                projected_time_override = float(prediction["predicted_seconds"])
+                model_confidence = prediction.get("confidence")
+            else:
+                serving_model_type = "deterministic"
+                fallback_reason = "fallback_from_lstm_unavailable"
+        elif model_decision.model_type != "deterministic":
             logger.info(
                 "Model '%s' selected for user=%s event=%s but not yet enabled in projection serving; using deterministic fallback",
                 model_decision.model_type,
@@ -105,7 +123,9 @@ class ProjectionService:
             features=features,
             previous_projection=previous_state,
             model_type=serving_model_type,
+            model_confidence=model_confidence,
             fallback_reason=fallback_reason,
+            projected_time_override=projected_time_override,
         )
 
         if self.engine.check_structural_shift(new_state, previous_state):

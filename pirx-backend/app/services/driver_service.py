@@ -1,6 +1,6 @@
 import logging
 
-from app.ml.projection_engine import ProjectionEngine, DriverState, DRIVER_NAMES
+from app.ml.projection_engine import ProjectionEngine, ProjectionState, DriverState, DRIVER_NAMES
 from app.ml.shap_explainer import SHAPExplainer
 from app.services.supabase_client import SupabaseService
 from typing import Optional
@@ -24,6 +24,8 @@ class DriverService:
         previous_projection=None,
         model_type: str = "deterministic",
         fallback_reason: str | None = None,
+        model_confidence: float | None = None,
+        projected_time_override: float | None = None,
     ) -> tuple:
         """Compute projection + drivers and store to DB.
 
@@ -40,6 +42,15 @@ class DriverService:
             features=features,
             previous_state=previous_projection,
         )
+
+        if projected_time_override is not None:
+            projection_state, driver_states = self._apply_projection_override(
+                projection_state=projection_state,
+                driver_states=driver_states,
+                baseline_time_s=baseline_time_s,
+                projected_time_override=projected_time_override,
+                previous_projection=previous_projection,
+            )
 
         if not self.engine.validate_driver_sum(
             driver_states, projection_state.total_improvement_seconds
@@ -86,6 +97,7 @@ class DriverService:
                 "user_id": user_id,
                 "event": event,
                 "model_type": model_type,
+                "model_confidence": model_confidence,
                 "fallback_reason": fallback_reason,
                 "midpoint_seconds": projection_state.projected_time_seconds,
                 "range_low_seconds": projection_state.supported_range_low,
@@ -122,6 +134,80 @@ class DriverService:
             logger.exception("Failed to insert driver state for user %s", user_id)
 
         return projection_state, driver_states
+
+    def _apply_projection_override(
+        self,
+        projection_state: ProjectionState,
+        driver_states: list[DriverState],
+        baseline_time_s: float,
+        projected_time_override: float,
+        previous_projection=None,
+    ) -> tuple[ProjectionState, list[DriverState]]:
+        target_projected = max(60.0, float(projected_time_override))
+        target_improvement = round(baseline_time_s - target_projected, 2)
+
+        if not driver_states:
+            return projection_state, driver_states
+
+        current_total = sum(d.contribution_seconds for d in driver_states)
+        updated_drivers: list[DriverState] = []
+
+        if abs(current_total) < 1e-6:
+            even = round(target_improvement / len(driver_states), 2)
+            running = 0.0
+            for idx, state in enumerate(driver_states):
+                if idx == len(driver_states) - 1:
+                    contrib = round(target_improvement - running, 2)
+                else:
+                    contrib = even
+                    running += contrib
+                updated_drivers.append(
+                    DriverState(
+                        user_id=state.user_id,
+                        event=state.event,
+                        driver_name=state.driver_name,
+                        contribution_seconds=contrib,
+                        score=state.score,
+                        trend=state.trend,
+                    )
+                )
+        else:
+            scale = target_improvement / current_total
+            running = 0.0
+            for idx, state in enumerate(driver_states):
+                if idx == len(driver_states) - 1:
+                    contrib = round(target_improvement - running, 2)
+                else:
+                    contrib = round(state.contribution_seconds * scale, 2)
+                    running += contrib
+                updated_drivers.append(
+                    DriverState(
+                        user_id=state.user_id,
+                        event=state.event,
+                        driver_name=state.driver_name,
+                        contribution_seconds=contrib,
+                        score=state.score,
+                        trend=state.trend,
+                    )
+                )
+
+        width = max(0.0, projection_state.supported_range_high - projection_state.supported_range_low)
+        range_half = width / 2.0
+        volatility = 0.0
+        if previous_projection and previous_projection.projected_time_seconds:
+            volatility = abs(target_projected - previous_projection.projected_time_seconds)
+
+        adjusted_state = ProjectionState(
+            user_id=projection_state.user_id,
+            event=projection_state.event,
+            projected_time_seconds=round(target_projected, 2),
+            supported_range_low=round(max(60.0, target_projected - range_half), 2),
+            supported_range_high=round(target_projected + range_half, 2),
+            baseline_time_seconds=baseline_time_s,
+            total_improvement_seconds=round(target_improvement, 2),
+            volatility=round(volatility, 2),
+        )
+        return adjusted_state, updated_drivers
 
     def get_driver_explanation(
         self,

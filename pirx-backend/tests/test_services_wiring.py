@@ -274,7 +274,31 @@ class TestProjectionService:
         mock_compute.assert_called_once()
         kwargs = mock_compute.call_args.kwargs
         assert kwargs["model_type"] == "deterministic"
-        assert kwargs["fallback_reason"] == "fallback_from_lstm"
+        assert kwargs["fallback_reason"] == "fallback_from_lstm_unavailable"
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_lstm_selection_uses_inference_override_when_available(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+
+        with patch.object(svc.db, "get_user", return_value={"baseline_time_seconds": 1260.0}), \
+             patch.object(svc.db, "get_latest_projection", return_value=None), \
+             patch.object(svc.orchestrator, "select_projection_model", return_value=MagicMock(model_type="lstm", reason="active_model_registry")), \
+             patch.object(svc.lstm_inference, "predict_projection_time", return_value={"predicted_seconds": 1190.0, "confidence": 0.77}), \
+             patch.object(svc.driver_service, "compute_and_store_drivers", return_value=(_make_projection_state(projected_time_seconds=1190.0), _make_driver_states())) as mock_compute:
+            state = svc.recompute("u1", "5000", MOCK_FEATURES)
+
+        assert state is not None
+        kwargs = mock_compute.call_args.kwargs
+        assert kwargs["model_type"] == "lstm"
+        assert kwargs["fallback_reason"] is None
+        assert kwargs["projected_time_override"] == 1190.0
+        assert kwargs["model_confidence"] == 0.77
 
     @patch("app.services.supabase_client.get_supabase_client")
     def test_recompute_first_projection(self, mock_sb):
@@ -497,3 +521,28 @@ class TestCeleryTasks:
         result = backfill_history("user-abc", "terra")
         assert result["status"] == "completed"
         assert result["provider"] == "terra"
+
+
+class TestLSTMInferenceAdapter:
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_returns_none_without_active_lstm_model(self, mock_sb):
+        mock_sb.return_value = MagicMock()
+        from app.ml.lstm_inference import LSTMInferenceAdapter
+
+        adapter = LSTMInferenceAdapter()
+        with patch.object(adapter.db, "get_active_model", return_value=None):
+            result = adapter.predict_projection_time("u1", "5000", MOCK_FEATURES, 1260.0, None)
+        assert result is None
+
+    @patch("app.services.supabase_client.get_supabase_client")
+    def test_returns_prediction_with_confidence_when_artifact_exists(self, mock_sb):
+        mock_sb.return_value = MagicMock()
+        from app.ml.lstm_inference import LSTMInferenceAdapter
+
+        adapter = LSTMInferenceAdapter()
+        with patch.object(adapter.db, "get_active_model", return_value={"model_id": "m1", "model_family": "lstm"}), \
+             patch.object(adapter.db, "get_latest_model_artifact", return_value={"artifact_id": "a1", "metadata": {"validation_score": 0.81}}):
+            result = adapter.predict_projection_time("u1", "5000", MOCK_FEATURES, 1260.0, None)
+        assert result is not None
+        assert result["artifact_id"] == "a1"
+        assert 0.0 <= result["confidence"] <= 1.0

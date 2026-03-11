@@ -331,3 +331,13 @@ class TestModelLifecycleOperations:
         assert study["study_id"] == "s1"
         trial = svc.create_optuna_trial({"study_id": "s1", "trial_number": 0, "state": "COMPLETE"})
         assert trial["study_id"] == "s1"
+
+    def test_get_latest_model_artifact(self, mock_supabase):
+        chain = (
+            mock_supabase.table.return_value.select.return_value
+            .eq.return_value.order.return_value.limit.return_value.execute
+        )
+        chain.return_value.data = [{"artifact_id": "a1", "model_id": "m1"}]
+        svc = SupabaseService()
+        artifact = svc.get_latest_model_artifact("m1")
+        assert artifact["artifact_id"] == "a1"

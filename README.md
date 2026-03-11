@@ -568,3 +568,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: none.
 - **API/schema impact**: `projection_state` adds optional `fallback_reason`, and its `model_type` constraint now includes `deterministic`; projection endpoints remain backward compatible with optional metadata fields.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (89 passed).
+
+## README Delta - LSTM Serving Adapter
+
+- **What changed**: Added an LSTM inference adapter that reads active model/artifact lifecycle records and emits bounded projection overrides; integrated this into projection recompute with deterministic fallback when LSTM artifacts are unavailable.
+- **Why it changed**: Enable phased per-user LSTM serving behavior without breaking the deterministic projection safety rail or the existing driver explainability contract.
+- **Code touchpoints**: `pirx-backend/app/ml/lstm_inference.py`, `pirx-backend/app/services/projection_service.py`, `pirx-backend/app/services/driver_service.py`, `pirx-backend/app/services/supabase_client.py`, `pirx-backend/app/tasks/ml_tasks.py`, `pirx-backend/tests/test_services_wiring.py`, `pirx-backend/tests/test_supabase_client.py`, `pirx-backend/tests/test_ml_tasks.py`.
+- **Data-flow impact**: Projection serving now attempts LSTM inference when model orchestrator selects `lstm`; successful predictions feed the projection write path as a bounded override with confidence metadata; fallback path remains deterministic and stores explicit fallback reason.
+- **Formula/constant changes**: Added bounded LSTM adapter heuristic adjustment over baseline and confidence clamp `[0, 1]`; deterministic engine formulas are unchanged.
+- **API/schema impact**: No contract break; existing optional projection metadata (`model_source`, `model_confidence`, `fallback_reason`) is now populated from active LSTM serve path when available.
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py -q` in `pirx-backend` (92 passed).

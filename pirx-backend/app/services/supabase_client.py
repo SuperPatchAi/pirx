@@ -399,6 +399,17 @@ class SupabaseService:
         result = self.client.table("model_artifacts").insert(data).execute()
         return result.data[0] if result.data else data
 
+    def get_latest_model_artifact(self, model_id: str) -> dict | None:
+        result = (
+            self.client.table("model_artifacts")
+            .select("*")
+            .eq("model_id", model_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def insert_injury_risk_assessment(self, data: dict) -> dict:
         result = self.client.table("injury_risk_assessments").insert(data).execute()
         return result.data[0] if result.data else data

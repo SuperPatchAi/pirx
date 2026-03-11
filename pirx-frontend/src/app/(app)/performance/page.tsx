@@ -632,6 +632,7 @@ interface ReadinessData {
   score: number;
   label: string;
   components?: { name: string; value: number }[];
+  factors?: { title?: string; detail?: string; impact?: string }[];
 }
 
 function getReadinessColor(score: number): string {
@@ -713,6 +714,58 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function getInjuryRiskBand(score: number): "low" | "moderate" | "high" {
+  if (score < 35) return "low";
+  if (score < 60) return "moderate";
+  return "high";
+}
+
+function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading: boolean }) {
+  if (loading) return <TabSpinner />;
+  if (!data) return <NoData message="Sync a wearable to compute injury risk readiness." />;
+
+  const injuryComponent = (data.components ?? []).find((c) =>
+    c.name.toLowerCase().replace(/\s+/g, "_").includes("injury_risk")
+  );
+  const riskScore = injuryComponent?.value ?? null;
+  const riskFactor = (data.factors ?? []).find((f) =>
+    `${f.title ?? ""} ${f.detail ?? ""}`.toLowerCase().includes("injury")
+  );
+
+  if (riskScore == null) {
+    return <NoData message="Injury risk signal is not available yet for this athlete." />;
+  }
+
+  const riskBand = getInjuryRiskBand(riskScore);
+  const riskClass =
+    riskBand === "low"
+      ? "bg-green-500/15 text-green-400 border border-green-500/25"
+      : riskBand === "moderate"
+        ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/25"
+        : "bg-red-500/15 text-red-400 border border-red-500/25";
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-border/40">
+        <CardContent className="p-6 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Injury Risk Readiness</p>
+            <p className="text-3xl font-bold tabular-nums mt-1">{Math.round(riskScore)}/100</p>
+          </div>
+          <Badge className={riskClass}>{riskBand.toUpperCase()}</Badge>
+        </CardContent>
+      </Card>
+      <Card className="border-border/40">
+        <CardContent className="p-4">
+          <p className="text-xs text-muted-foreground">
+            {riskFactor?.detail ?? "Risk reflects recent load, consistency, and physiological strain signals."}
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1138,6 +1191,7 @@ const ANALYSIS_SECTIONS = [
   { key: "zones", label: "Zone Distribution", icon: Activity },
   { key: "economy", label: "Running Economy", icon: Heart },
   { key: "readiness", label: "Event Readiness", icon: Shield },
+  { key: "injury-risk", label: "Injury Risk", icon: XCircle },
   { key: "learning", label: "What We're Learning", icon: Brain },
   { key: "adjuncts", label: "Adjunct Analysis", icon: Zap },
   { key: "honest-state", label: "Current Honest State", icon: BookOpen },
@@ -1374,8 +1428,42 @@ export default function PerformancePage() {
                 }
               }
               setReadinessData({ score: d.score ?? 0, label: d.label ?? "Unknown", components });
+              const injuryRiskVal = d.components?.injury_risk;
+              setModelRiskMeta((prev) => ({
+                ...prev,
+                injuryRiskScore:
+                  typeof injuryRiskVal === "number"
+                    ? injuryRiskVal
+                    : Number(injuryRiskVal ?? NaN) || null,
+              }));
             })
             .catch((e) => console.warn("Failed to load readiness:", e))
+            .finally(() => setReadinessLoading(false));
+        },
+        "injury-risk": () => {
+          setReadinessLoading(true);
+          apiFetch("/readiness")
+            .then((d) => {
+              if (!d) return;
+              let components: { name: string; value: number }[] = [];
+              if (d.components) {
+                if (Array.isArray(d.components)) {
+                  components = d.components;
+                } else {
+                  components = Object.entries(d.components).map(([k, v]) => ({
+                    name: k.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    value: Number(v) || 0,
+                  }));
+                }
+              }
+              setReadinessData({
+                score: d.score ?? 0,
+                label: d.label ?? "Unknown",
+                components,
+                factors: Array.isArray(d.factors) ? d.factors : [],
+              });
+            })
+            .catch((e) => console.warn("Failed to load injury risk:", e))
             .finally(() => setReadinessLoading(false));
         },
         learning: () => {
@@ -1460,6 +1548,8 @@ export default function PerformancePage() {
         return <EconomyTab data={economyData} loading={economyLoading} />;
       case "readiness":
         return <ReadinessTab data={readinessData} loading={readinessLoading} />;
+      case "injury-risk":
+        return <InjuryRiskTab data={readinessData} loading={readinessLoading} />;
       case "learning":
         return <LearningTab data={learningData} loading={learningLoading} />;
       case "adjuncts":

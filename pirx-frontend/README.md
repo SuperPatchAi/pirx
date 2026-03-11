@@ -191,3 +191,23 @@ Before making frontend changes:
 - **Formula/constant changes**: frontend confidence tiers (`high >= 80%`, `moderate >= 60%`, else `low`).
 - **API/schema impact**: none.
 - **Verification**: `npm run test -- "src/components/home/__tests__/projection-tile.test.tsx" "src/app/(auth)/__tests__/login.test.tsx"` passes.
+
+## README Delta - Economy Tab Live Refresh
+
+- **What changed**: Performance `economy` section now refetches `/features/economy` every time the section is opened instead of one-time lazy caching for the whole page session.
+- **Why it changed**: Ensure matched-HR band and efficiency values reflect newly synced workouts without requiring a full page reload.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/features.py`.
+- **Data-flow impact**: Frontend performance analysis fetch behavior plus backend economy-window responsiveness.
+- **Formula/constant changes**: none in frontend; backend economy source now emphasizes recent-vs-prior 21-day matched-HR windows.
+- **API/schema impact**: none.
+- **Verification**: Backend `tests/test_features_endpoints.py` passes after endpoint updates; frontend change is fetch-timing only with unchanged response contract.
+
+## README Delta - Injury Risk Analysis Card
+
+- **What changed**: Added a dedicated `Injury Risk` card in Performance analysis carousel, separate from the broader Event Readiness card.
+- **Why it changed**: Improve risk visibility by giving injury risk its own focused analysis surface alongside other performance modules.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/readiness.py`.
+- **Data-flow impact**: Frontend now loads `/readiness` for both `Event Readiness` and `Injury Risk` analysis cards, deriving risk score and detail from readiness components/factors.
+- **Formula/constant changes**: frontend risk-band labels use thresholds aligned to backend semantics (`low < 35`, `moderate < 60`, else `high`).
+- **API/schema impact**: none (existing `/readiness` payload reused).
+- **Verification**: Manual UI validation path: open Performance -> Analysis -> Injury Risk card after sync/recompute and confirm score/band/detail render.

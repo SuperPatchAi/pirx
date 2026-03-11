@@ -651,3 +651,53 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
 - **Formula/constant changes**: None in code; document now explicitly enumerates implemented formulas/constants and marks rollout-gated logic.
 - **API/schema impact**: none.
 - **Verification**: Generated PDF via `./docs/build_science_pdf.sh` and confirmed artifact output at `docs/The_Science_Behind_PIRX.pdf` using the in-repo build path.
+
+## README Delta - Science PDF Narrative Rebuild
+
+- **What changed**: Replaced the markdown+browser print approach with a ReportLab-based Python paper generator (`docs/build_science_pdf.py`) and rebuilt the science PDF with journal-style narrative structure (Abstract, Introduction, Methods, Results, Discussion, Limitations, Conclusion, References).
+- **Why it changed**: Improve document quality and clarity by emphasizing the rationale behind PIRX design choices, not only formulas and component inventories, while matching the style cues from the repository study references.
+- **Code touchpoints**: `docs/build_science_pdf.py`, `docs/build_science_pdf.sh`, `docs/The_Science_Behind_PIRX.md`, `docs/The_Science_Behind_PIRX.pdf`.
+- **Data-flow impact**: Documentation only; no runtime data-path changes.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Created local docs venv (`.venv-docs`) with ReportLab and generated `docs/The_Science_Behind_PIRX.pdf` via `./docs/build_science_pdf.sh`.
+
+## README Delta - Science PDF Length and Depth Expansion
+
+- **What changed**: Expanded the ReportLab-generated science paper to a full 12-page two-column document with deeper methods/math explanation, module-level walkthroughs, rollout governance scenarios, extended appendices, and glossary guardrails aligned to study-style academic structure.
+- **Why it changed**: Prior version was too short and insufficiently narrative; this update adds explicit rationale and end-to-end interpretability context while preserving implementation-truth boundaries.
+- **Code touchpoints**: `docs/build_science_pdf.py`, `docs/The_Science_Behind_PIRX.pdf`, `docs/The_Science_Behind_PIRX.md`.
+- **Data-flow impact**: Documentation only; no runtime behavior changes.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Regenerated PDF with `./docs/build_science_pdf.sh` and verified page count via `pdfinfo` (`Pages: 12`).
+
+## README Delta - Celery ML Automation Activation
+
+- **What changed**: Updated Render worker topology so the primary Celery worker consumes the `ml` queue and added a dedicated `pirx-celery-beat` service to run scheduled tasks.
+- **Why it changed**: Weekly LSTM training/tuning schedules were defined in code but not fully active in production because no beat process was running and no worker consumed the `ml` queue.
+- **Code touchpoints**: `render.yaml`, `pirx-backend/app/tasks/__init__.py`.
+- **Data-flow impact**: Background orchestration stage only (scheduled training/tuning dispatch and queue consumption), with no changes to ingest, feature, projection, API, frontend, or chat contracts.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: Verified Celery config routes `app.tasks.ml_tasks.*` to `ml` and beat schedule includes weekly `train_user_lstm` and `tune_user_lstm`; deployment of updated Render services is required to activate.
+
+## README Delta - Economy Freshness and Windowing
+
+- **What changed**: Updated running economy API logic to compare matched-HR pace using a recent 21-day window versus the prior 21-day baseline window, with fallback split logic for sparse data.
+- **Why it changed**: Improve responsiveness so the Performance matched-HR band reflects new syncs sooner instead of appearing stale against long-history averages.
+- **Code touchpoints**: `pirx-backend/app/routers/features.py`, `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Features API read path only (`GET /features/economy`), consumed by frontend Performance analysis tab.
+- **Formula/constant changes**: Economy comparison now uses time windows (`current: last 21 days`, `baseline: days 22-42`) before falling back to half-split matched history.
+- **API/schema impact**: no shape changes.
+- **Verification**: Ran `python -m pytest tests/test_features_endpoints.py -q` in `pirx-backend` (25 passed).
+
+## README Delta - Performance Injury Risk Card
+
+- **What changed**: Added a dedicated Injury Risk card in the frontend Performance analysis carousel, distinct from the Event Readiness card.
+- **Why it changed**: Make injury-risk interpretation first-class and easier to review without conflating it with total readiness score.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`, `pirx-backend/app/routers/readiness.py`.
+- **Data-flow impact**: Frontend analysis stage now renders a separate injury-risk module from existing readiness components/factors.
+- **Formula/constant changes**: none in backend formulas; frontend applies band labels aligned with readiness injury thresholds.
+- **API/schema impact**: none (reuses existing `/readiness` response contract).
+- **Verification**: Frontend behavior verified via Performance analysis flow (Injury Risk card score/band/detail render after sync and readiness fetch).

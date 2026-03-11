@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends
 
 from app.dependencies import get_current_user
@@ -187,26 +189,44 @@ async def get_running_economy(user: dict = Depends(get_current_user)):
     activities = db.get_recent_activities(user["user_id"], days=180)
 
     HR_LOW, HR_HIGH = 145, 155
+    now = datetime.now(timezone.utc)
+    current_window_start = now - timedelta(days=21)
+    baseline_window_start = now - timedelta(days=42)
+    current_window_paces: list[float] = []
+    baseline_window_paces: list[float] = []
     matched_recent: list[float] = []
 
     for a in activities:
         avg_hr = a.get("avg_hr")
         pace = a.get("avg_pace_sec_per_km")
-        if avg_hr is None or pace is None:
+        ts_raw = a.get("timestamp")
+        if avg_hr is None or pace is None or ts_raw is None:
             continue
-        if HR_LOW <= avg_hr <= HR_HIGH:
-            matched_recent.append(pace)
+        if not (HR_LOW <= avg_hr <= HR_HIGH):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
 
-    if len(matched_recent) < 3:
-        return None
+        matched_recent.append(pace)
+        if ts >= current_window_start:
+            current_window_paces.append(pace)
+        elif baseline_window_start <= ts < current_window_start:
+            baseline_window_paces.append(pace)
 
-    half = len(matched_recent) // 2
-    current_paces = matched_recent[:half] if half > 0 else matched_recent
-    baseline_paces = matched_recent[half:] if half > 0 else matched_recent
+    if len(current_window_paces) < 2 or len(baseline_window_paces) < 2:
+        if len(matched_recent) < 4:
+            return None
+        half = len(matched_recent) // 2
+        current_window_paces = matched_recent[:half]
+        baseline_window_paces = matched_recent[half:]
 
     import statistics
-    current_pace = round(statistics.mean(current_paces), 1)
-    baseline_pace = round(statistics.mean(baseline_paces), 1)
+    current_pace = round(statistics.mean(current_window_paces), 1)
+    baseline_pace = round(statistics.mean(baseline_window_paces), 1)
 
     return {
         "matched_hr_band": _build_economy_band(f"{HR_LOW}-{HR_HIGH} bpm", baseline_pace, current_pace),

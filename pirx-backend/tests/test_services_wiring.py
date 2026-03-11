@@ -386,6 +386,23 @@ class TestProjectionService:
         assert payload["event"] == "5000"
 
     @patch("app.services.supabase_client.get_supabase_client")
+    def test_recompute_continues_when_metric_logging_fails(self, mock_sb):
+        mock_client = MagicMock()
+        mock_sb.return_value = mock_client
+        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{}])
+
+        from app.services.projection_service import ProjectionService
+
+        svc = ProjectionService()
+        with patch.object(svc.db, "get_user", return_value={"baseline_time_seconds": 1260.0}), \
+             patch.object(svc.db, "get_latest_projection", return_value=None), \
+             patch.object(svc.db, "insert_model_metric", side_effect=Exception("metric down")), \
+             patch.object(svc.orchestrator, "select_projection_model", return_value=MagicMock(model_type="deterministic", reason="default_production_path")), \
+             patch.object(svc.driver_service, "compute_and_store_drivers", return_value=(_make_projection_state(), _make_driver_states())):
+            state = svc.recompute("u1", "5000", MOCK_FEATURES)
+        assert state is not None
+
+    @patch("app.services.supabase_client.get_supabase_client")
     def test_recompute_first_projection(self, mock_sb):
         """First projection with no previous state."""
         mock_client = MagicMock()

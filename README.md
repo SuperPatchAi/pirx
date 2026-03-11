@@ -631,3 +631,13 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
   - `GET /rollout/metrics?days=<1..90>`
   No schema changes.
 - **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py tests/test_rollout.py -q` in `pirx-backend` (101 passed).
+
+## README Delta - Final Readiness Sweep
+
+- **What changed**: Added a release-readiness summary endpoint and failure-mode coverage for projection serving metric write failures.
+- **Why it changed**: Provide a final operational checkpoint API and verify deterministic projection flow remains resilient when observability writes fail.
+- **Code touchpoints**: `pirx-backend/app/routers/rollout.py`, `pirx-backend/tests/test_rollout.py`, `pirx-backend/tests/test_services_wiring.py`.
+- **Data-flow impact**: `/rollout/release-readiness` combines rollout gate state with serving metrics/checks; projection recompute failure-mode tests now enforce graceful continuation when `model_serving_decision` metric writes fail.
+- **Formula/constant changes**: none.
+- **API/schema impact**: New additive endpoint `GET /rollout/release-readiness?days=<1..90>`; no schema changes.
+- **Verification**: Ran `python -m pytest tests/test_tasks.py tests/test_onboarding.py tests/test_readiness.py tests/test_projection_endpoints.py tests/test_services_wiring.py tests/test_ml_tasks.py tests/test_rollout.py -q` in `pirx-backend` (103 passed).

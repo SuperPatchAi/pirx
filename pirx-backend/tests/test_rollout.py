@@ -61,3 +61,32 @@ class TestServingMetricsEndpoint:
         assert data["total_decisions"] == 4
         assert data["event_counts"]["5000"] == 3
         assert data["event_counts"]["10000"] == 1
+
+
+class TestReleaseReadinessEndpoint:
+    @patch("app.routers.rollout.SupabaseService")
+    @patch("app.routers.rollout.settings")
+    def test_get_release_readiness(self, mock_settings, mock_svc_cls, client):
+        mock_settings.enable_lstm_serving = True
+        mock_settings.enable_knn_serving = False
+        mock_settings.lstm_serving_rollout_percentage = 25
+
+        mock_db = MagicMock()
+        mock_svc_cls.return_value = mock_db
+        mock_result = MagicMock()
+        mock_result.data = [
+            {"event": "5000", "model_type": "event_5000", "metric_type": "model_serving_decision"},
+            {"event": "5000", "model_type": "event_5000", "metric_type": "model_serving_decision"},
+        ]
+        (
+            mock_db.client.table.return_value.select.return_value
+            .eq.return_value.gte.return_value.order.return_value
+            .limit.return_value.execute.return_value
+        ) = mock_result
+
+        r = client.get("/rollout/release-readiness")
+        assert r.status_code == 200
+        data = r.json()
+        assert "gates" in data
+        assert "serving_metrics" in data
+        assert data["serving_metrics"]["total_decisions"] == 2

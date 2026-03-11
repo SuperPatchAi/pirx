@@ -46,3 +46,24 @@ async def get_serving_metrics(days: int = Query(default=7, ge=1, le=90)):
         "event_counts": event_counts,
         "model_type_counts": model_type_counts,
     }
+
+
+@router.get("/release-readiness")
+async def get_release_readiness(days: int = Query(default=7, ge=1, le=90)):
+    metrics = await get_serving_metrics(days=days)
+    gates = {
+        "enable_lstm_serving": settings.enable_lstm_serving,
+        "enable_knn_serving": settings.enable_knn_serving,
+        "lstm_serving_rollout_percentage": settings.lstm_serving_rollout_percentage,
+    }
+    checks = {
+        "has_serving_decisions": metrics["total_decisions"] > 0,
+        "lstm_flag_enabled": bool(gates["enable_lstm_serving"]),
+        "rollout_percentage_valid": 0 <= int(gates["lstm_serving_rollout_percentage"]) <= 100,
+    }
+    return {
+        "gates": gates,
+        "serving_metrics": metrics,
+        "checks": checks,
+        "ready": all(checks.values()),
+    }

@@ -36,6 +36,8 @@ import {
   Shield,
   CheckCircle,
   XCircle,
+  Moon,
+  Scale,
 } from "lucide-react";
 import { ProjectionHistoryChart } from "@/components/charts/projection-history-chart";
 import {
@@ -692,6 +694,105 @@ interface ReadinessData {
   factors?: { title?: string; detail?: string; impact?: string }[];
 }
 
+interface RecoveryBodyData {
+  sleep_score: number | null;
+  weight_kg: number | null;
+  body_fat_percentage: number | null;
+  resting_hr: number | null;
+  hrv: number | null;
+  timestamp: string | null;
+}
+
+function RecoveryBodyTab({ data, loading }: { data: RecoveryBodyData | null; loading: boolean }) {
+  if (loading) return <TabSpinner />;
+  if (!data) {
+    return <NoData message="Sync a wearable to populate recovery and body signals." />;
+  }
+
+  const hasAnyMetric =
+    data.sleep_score != null ||
+    data.weight_kg != null ||
+    data.body_fat_percentage != null ||
+    data.resting_hr != null ||
+    data.hrv != null;
+
+  if (!hasAnyMetric) {
+    return <NoData message="No sleep/body metrics available yet. Terra webhook data will appear here automatically once received." />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-border/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Moon className="h-4 w-4" />
+            Recovery & Body Signals
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] text-muted-foreground">Sleep Score</p>
+              <p className="text-sm font-medium tabular-nums">
+                {data.sleep_score == null ? "—" : `${Math.round(data.sleep_score)}/100`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Weight</p>
+              <p className="text-sm font-medium tabular-nums">
+                {data.weight_kg == null ? "—" : `${data.weight_kg.toFixed(1)} kg`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Body Fat</p>
+              <p className="text-sm font-medium tabular-nums">
+                {data.body_fat_percentage == null ? "—" : `${data.body_fat_percentage.toFixed(1)}%`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Resting HR / HRV</p>
+              <p className="text-sm font-medium tabular-nums">
+                {data.resting_hr == null ? "—" : `${Math.round(data.resting_hr)} bpm`}
+                {" / "}
+                {data.hrv == null ? "—" : `${Math.round(data.hrv)} ms`}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Collapsible>
+        <Card className="border-border/40">
+          <CollapsibleTrigger asChild>
+            <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
+              <span className="text-sm font-medium">Why this number?</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 pb-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                These values are read from your latest wearable physiology entry (`/physiology/latest`)
+                populated by Terra `sleep` and `body` webhook payloads.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Sleep score is provider-scaled (0-100). Weight and body-fat are stored in wearable
+                `custom_fields` to keep schema compatibility across providers.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Last update:{" "}
+                <span className="font-medium">
+                  {data.timestamp ? new Date(data.timestamp).toLocaleString() : "—"}
+                </span>
+              </p>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+    </div>
+  );
+}
+
 function getReadinessColor(score: number): string {
   if (score >= 95) return "bg-green-500/20 text-green-500 border border-green-500/30";
   if (score >= 88) return "bg-green-500/15 text-green-400 border border-green-500/25";
@@ -1290,6 +1391,7 @@ const ANALYSIS_SECTIONS = [
   { key: "drivers", label: "Structural Drivers", icon: BarChart3 },
   { key: "zones", label: "Zone Distribution", icon: Activity },
   { key: "economy", label: "Running Economy", icon: Heart },
+  { key: "recovery-body", label: "Recovery & Body", icon: Scale },
   { key: "readiness", label: "Event Readiness", icon: Shield },
   { key: "injury-risk", label: "Injury Risk", icon: XCircle },
   { key: "learning", label: "What We're Learning", icon: Brain },
@@ -1339,6 +1441,8 @@ export default function PerformancePage() {
   const [accuracyUser, setAccuracyUser] = useState<UserAccuracy | null>(null);
   const [accuracyLoading, setAccuracyLoading] = useState(false);
   const [physiologyLatest, setPhysiologyLatest] = useState<Record<string, unknown> | null>(null);
+  const [recoveryBodyData, setRecoveryBodyData] = useState<RecoveryBodyData | null>(null);
+  const [recoveryBodyLoading, setRecoveryBodyLoading] = useState(false);
 
   const markFetched = useCallback((tab: string) => {
     setFetchedTabs((prev) => new Set(prev).add(tab));
@@ -1519,6 +1623,27 @@ export default function PerformancePage() {
             .catch((e) => console.warn("Failed to load economy:", e))
             .finally(() => setEconomyLoading(false));
         },
+        "recovery-body": () => {
+          setRecoveryBodyLoading(true);
+          apiFetch("/physiology/latest")
+            .then((d) => {
+              if (!d) return;
+              const custom = (d.custom_fields ?? {}) as Record<string, unknown>;
+              setRecoveryBodyData({
+                sleep_score: typeof d.sleep_score === "number" ? d.sleep_score : null,
+                weight_kg: typeof custom.weight_kg === "number" ? custom.weight_kg : null,
+                body_fat_percentage:
+                  typeof custom.body_fat_percentage === "number"
+                    ? custom.body_fat_percentage
+                    : null,
+                resting_hr: typeof d.resting_hr === "number" ? d.resting_hr : null,
+                hrv: typeof d.hrv === "number" ? d.hrv : null,
+                timestamp: typeof d.timestamp === "string" ? d.timestamp : null,
+              });
+            })
+            .catch((e) => console.warn("Failed to load recovery/body:", e))
+            .finally(() => setRecoveryBodyLoading(false));
+        },
         readiness: () => {
           setReadinessLoading(true);
           apiFetch("/readiness")
@@ -1661,6 +1786,8 @@ export default function PerformancePage() {
         return <EconomyTab data={economyData} loading={economyLoading} />;
       case "readiness":
         return <ReadinessTab data={readinessData} loading={readinessLoading} />;
+      case "recovery-body":
+        return <RecoveryBodyTab data={recoveryBodyData} loading={recoveryBodyLoading} />;
       case "injury-risk":
         return <InjuryRiskTab data={readinessData} loading={readinessLoading} />;
       case "learning":

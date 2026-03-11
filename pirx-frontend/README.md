@@ -281,3 +281,13 @@ Before making frontend changes:
 - **Formula/constant changes**: none.
 - **API/schema impact**: none; additive rendering of existing `sleep_score` and `custom_fields` values.
 - **Verification**: `npm run test:run -- "src/app/(app)/physiology/__tests__/trends-mappers.test.ts" "src/components/home/__tests__/projection-tile.test.tsx"` passes.
+
+## README Delta - Performance Analysis Recovery Card
+
+- **What changed**: Added a dedicated `Recovery & Body` analysis carousel card in Performance, with lazy-loaded `/physiology/latest` metrics and `Why this number?` explainability.
+- **Why it changed**: Ensure sleep/body signals are visible in the same analysis workflow as economy/readiness instead of only in overview summaries.
+- **Code touchpoints**: `pirx-frontend/src/app/(app)/performance/page.tsx`.
+- **Data-flow impact**: Performance analysis section toggle now includes `recovery-body` loader and local tab state.
+- **Formula/constant changes**: none.
+- **API/schema impact**: none.
+- **Verification**: IDE diagnostics are clean for updated Performance page.

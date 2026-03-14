@@ -3,6 +3,9 @@
 Readiness is independent from projection — it indicates how prepared
 a runner is to race TODAY, not their structural fitness level.
 
+Uses a trained GradientBoostingClassifier on race-day outcomes when
+sufficient data exists (>= 5 races). Falls back to heuristic scoring.
+
 Score 0-100:
   90-100: Peak readiness (race day)
   70-89:  Good readiness (solid training block)
@@ -17,9 +20,16 @@ Components weighted:
   - Physiological markers: 15% (HRV trend, resting HR trend, sleep)
   - Consistency bonus: 10% (load stability over 4 weeks)
 """
-import numpy as np
-from dataclasses import dataclass
+import logging
+from io import BytesIO
 from typing import Optional
+from dataclasses import dataclass
+
+import joblib
+import numpy as np
+from sklearn.ensemble import GradientBoostingClassifier
+
+logger = logging.getLogger(__name__)
 
 
 READINESS_WEIGHTS = {
@@ -39,32 +49,146 @@ class ReadinessResult:
     factors: list[dict]  # explanatory factors
 
 
+READINESS_FEATURE_NAMES = [
+    "acwr_4w", "days_since_activity", "days_since_threshold",
+    "days_since_long_run", "hrv_trend", "resting_hr_trend",
+    "sleep_score", "weekly_load_stddev", "session_density_stability",
+]
+
+MIN_RACES_FOR_TRAINED = 5
+
+
+class ReadinessClassifier:
+    """Trained GradientBoostingClassifier for readiness probability."""
+
+    def __init__(self):
+        self.model: Optional[GradientBoostingClassifier] = None
+        self.is_trained = False
+
+    def train(self, feature_rows: list[dict], labels: list[int]) -> dict:
+        """Train on race-day outcome data.
+
+        Args:
+            feature_rows: Pre-race feature snapshots (1-3 days before race).
+            labels: Binary labels (1 = overperformed / high readiness, 0 = underperformed).
+        """
+        if len(feature_rows) < MIN_RACES_FOR_TRAINED:
+            return {"status": "insufficient_data", "samples": len(feature_rows)}
+
+        X = self._features_to_array(feature_rows)
+        y = np.array(labels, dtype=np.int32)
+
+        if len(np.unique(y)) < 2:
+            return {"status": "single_class", "samples": len(labels)}
+
+        self.model = GradientBoostingClassifier(
+            n_estimators=100,
+            max_depth=3,
+            learning_rate=0.05,
+            random_state=42,
+        )
+        self.model.fit(X, y)
+        self.is_trained = True
+
+        train_accuracy = float(self.model.score(X, y))
+        return {
+            "status": "trained",
+            "samples": len(labels),
+            "train_accuracy": round(train_accuracy, 3),
+        }
+
+    def predict_readiness(self, features: dict) -> Optional[float]:
+        """Predict readiness as calibrated probability 0-100."""
+        if not self.is_trained or self.model is None:
+            return None
+
+        X = self._features_to_array([features])
+        proba = self.model.predict_proba(X)[0]
+        if len(self.model.classes_) < 2:
+            prob = 1.0 if self.model.classes_[0] == 1 else 0.0
+        else:
+            prob = float(proba[1])
+        return round(prob * 100, 1)
+
+    def serialize(self) -> bytes:
+        if not self.is_trained or self.model is None:
+            raise ValueError("Cannot serialize untrained model")
+        buf = BytesIO()
+        joblib.dump(self.model, buf)
+        return buf.getvalue()
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> "ReadinessClassifier":
+        instance = cls()
+        buf = BytesIO(data)
+        instance.model = joblib.load(buf)
+        instance.is_trained = True
+        return instance
+
+    def _features_to_array(self, feature_rows: list[dict]) -> np.ndarray:
+        rows = []
+        for feat in feature_rows:
+            row = []
+            for name in READINESS_FEATURE_NAMES:
+                v = feat.get(name)
+                if v is None:
+                    row.append(0.0)
+                else:
+                    f = float(v)
+                    row.append(0.0 if f != f else f)
+            rows.append(row)
+        return np.array(rows, dtype=np.float64)
+
+
 class ReadinessEngine:
-    """Computes Event Readiness score from features and physiological data."""
+    """Computes Event Readiness score from features and physiological data.
+
+    Uses trained ReadinessClassifier when available, falls back to heuristic.
+    """
 
     @staticmethod
     def compute_readiness(
         features: dict[str, Optional[float]],
         days_since_last_activity: int = 0,
-        days_since_last_threshold: Optional[int] = 0,
-        days_since_last_long_run: Optional[int] = 0,
+        days_since_last_threshold: Optional[int] = None,
+        days_since_last_long_run: Optional[int] = None,
         days_since_last_race: Optional[int] = None,
-        resting_hr_trend: Optional[float] = None,  # positive = rising (bad)
-        hrv_trend: Optional[float] = None,  # positive = rising (good)
-        sleep_score: Optional[float] = None,  # 0-100
+        resting_hr_trend: Optional[float] = None,
+        hrv_trend: Optional[float] = None,
+        sleep_score: Optional[float] = None,
+        trained_classifier: Optional["ReadinessClassifier"] = None,
     ) -> ReadinessResult:
         """Compute readiness score from available data.
 
-        Args:
-            features: Feature dict from FeatureService (needs acwr_4w, weekly_load_stddev, etc.)
-            days_since_last_activity: Days since the last running activity
-            days_since_last_threshold: Days since last threshold/tempo workout
-            days_since_last_long_run: Days since last long run (>15km)
-            days_since_last_race: Days since last race (None if no recent race)
-            resting_hr_trend: Trend in resting HR (positive = increasing = worse)
-            hrv_trend: Trend in HRV (positive = increasing = better)
-            sleep_score: Recent sleep quality 0-100
+        Tries trained_classifier first if provided and trained.
+        Falls back to heuristic scoring otherwise.
         """
+        if trained_classifier is not None and trained_classifier.is_trained:
+            classifier_features = {
+                "acwr_4w": features.get("acwr_4w"),
+                "days_since_activity": float(days_since_last_activity),
+                "days_since_threshold": float(days_since_last_threshold if days_since_last_threshold is not None else 14),
+                "days_since_long_run": float(days_since_last_long_run if days_since_last_long_run is not None else 30),
+                "hrv_trend": float(hrv_trend if hrv_trend is not None else 0.0),
+                "resting_hr_trend": float(resting_hr_trend if resting_hr_trend is not None else 0.0),
+                "sleep_score": float(sleep_score if sleep_score is not None else 50.0),
+                "weekly_load_stddev": features.get("weekly_load_stddev"),
+                "session_density_stability": features.get("session_density_stability"),
+            }
+            ml_score = trained_classifier.predict_readiness(classifier_features)
+            if ml_score is not None:
+                label = ReadinessEngine._get_label(ml_score)
+                return ReadinessResult(
+                    score=ml_score,
+                    label=label,
+                    components={"ml_readiness": ml_score},
+                    factors=[{
+                        "factor": "ML-based readiness",
+                        "impact": "positive" if ml_score >= 70 else "neutral",
+                        "detail": f"Trained classifier score: {ml_score:.0f}/100",
+                    }],
+                )
+
         components = {}
         factors = []
 

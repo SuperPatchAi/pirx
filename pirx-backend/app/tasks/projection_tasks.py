@@ -267,7 +267,9 @@ def weekly_summary() -> dict:
             try:
                 from app.ml.learning_module import LearningModule
                 from app.services.notification_service import NotificationPayload
-                feature_hist = db.get_feature_history(user_id)
+                feature_hist = db.get_recent_feature_snapshots(user_id, limit=10)
+                if not feature_hist or len(feature_hist) < 3:
+                    feature_hist = db.get_feature_history(user_id)
                 if feature_hist and len(feature_hist) >= 3:
                     insights = LearningModule.analyze_training_patterns(feature_hist)
                     new_emerging = [i for i in insights if i.status in ("emerging", "supported") and i.confidence > 0.6]

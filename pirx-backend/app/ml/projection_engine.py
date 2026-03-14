@@ -7,6 +7,7 @@ Core responsibilities:
 4. Enforce driver sum constraint (drivers MUST sum to total improvement)
 5. Produce immutable projection state for storage
 """
+import math
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -116,7 +117,7 @@ class ProjectionEngine:
         Returns:
             (ProjectionState, list of 5 DriverStates)
         """
-        if not baseline_time_s or baseline_time_s <= 0:
+        if not baseline_time_s or baseline_time_s <= 0 or math.isnan(baseline_time_s):
             zero_state = ProjectionState(
                 user_id=user_id,
                 event=event,
@@ -232,8 +233,14 @@ class ProjectionEngine:
             feature_scores = []
             for f in feature_names:
                 v = features.get(f)
-                if v is None:
+                if v is None or (isinstance(v, float) and math.isnan(v)):
                     continue
+
+                if f == "acwr_4w":
+                    acwr_dev = min(abs(v - 1.05) / 0.5, 1.0)
+                    feature_scores.append(float(np.clip(100 * (1 - acwr_dev), 0, 100)))
+                    continue
+
                 baseline = self.FEATURE_BASELINES.get(f)
                 if baseline is None or baseline == 0:
                     feature_scores.append(50.0)
@@ -284,8 +291,13 @@ class ProjectionEngine:
 
         total_weighted = sum(weighted_scores.values())
 
-        if total_weighted == 0 or total_improvement == 0:
+        if total_improvement == 0:
             return {d: 0.0 for d in DRIVER_NAMES}
+        if total_weighted == 0:
+            even_share = round(total_improvement / len(DRIVER_NAMES), 2)
+            result = {d: even_share for d in DRIVER_NAMES}
+            result[DRIVER_NAMES[-1]] = round(total_improvement - even_share * (len(DRIVER_NAMES) - 1), 2)
+            return result
 
         contributions = {}
         running_total = 0.0

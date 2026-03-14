@@ -106,7 +106,7 @@ class TestFreshness:
 class TestRecency:
     def test_recent_threshold_high(self):
         result = ReadinessEngine.compute_readiness(
-            make_features(), days_since_last_threshold=2
+            make_features(), days_since_last_threshold=2, days_since_last_long_run=5
         )
         assert result.components["training_recency"] > 70
 

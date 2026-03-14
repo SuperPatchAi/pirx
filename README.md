@@ -415,26 +415,56 @@ These are not core model equations, but they materially affect output values sho
   - `bias = actual - projected`
   - log metric when `abs(bias) > 10.0` seconds
 
-### 9) Additional ML Modules Present (Not Primary Projection Path)
+### 9) ML Module Stack (Real Library Implementations)
 
-- `lmc.py`:
-  - rank-based local matrix completion in log-time space:
-    - `log_time_pred = dot(lambda_hat, f_target)`
-    - `time_pred = exp(log_time_pred)`
-  - coefficient bounds (aligned with synthetic population assumptions):
-    - first coefficient (`lambda0` in implementation) clipped to `[1.08, 1.15]`
-    - second coefficient (speed-endurance term) clipped to `[-0.4, 0.4]`
-  - supported range:
-    - `lower = pred * exp(-uncertainty * multiplier)`
-    - `upper = pred * exp(+uncertainty * multiplier)`
-- `learning_module.py`:
-  - trend and risk heuristics:
-    - volume phase trigger at `±15%` 3-week distance shift
-    - high threshold density trigger at `z4_pct > 0.15`
-    - risk trigger at `acwr_4w > 1.5`
-- `shap_explainer.py`:
-  - heuristic contribution from feature deltas, with inverse-feature direction handling
-  - state explanations compare feature-to-baseline ratios and bucket into above/average/below
+All modules below use real trained ML models with graceful heuristic fallback when
+insufficient data or model artifacts are unavailable.
+
+- `gb_projection_model.py` (Phase 1):
+  - `sklearn.ensemble.GradientBoostingRegressor` with Huber loss per user
+  - 17 input features from `FeatureService`, exponential recency weighting
+  - 5-fold weighted cross-validation via `cross_validate(params={"sample_weight": ...})`, serialized via `joblib`
+  - training: `ml_tasks.train_user_gb` Celery task
+
+- `shap_explainer.py` (Phase 2):
+  - `shap.TreeExplainer` on trained GB model for real Shapley value decomposition
+  - driver contributions aggregated from per-feature SHAP values
+  - falls back to heuristic delta-based explanation without a trained model
+
+- `readiness_engine.py` (Phase 3):
+  - `sklearn.ensemble.GradientBoostingClassifier` trained on race-day outcomes
+  - `ReadinessClassifier`: train/predict_readiness/serialize/deserialize lifecycle
+  - 9 features (ACWR, days_since_*, HRV, RHR, sleep, load stddev, session stability)
+  - falls back to weighted heuristic scoring (ACWR balance 30%, freshness 25%, recency 20%, physiological 15%, consistency 10%)
+
+- `injury_risk_model.py` (Phase 4):
+  - `TrainableInjuryRiskModel`: `sklearn.ensemble.RandomForestRegressor` retrained on real user data
+  - `InjurySignalExtractor`: proxy injury detection (extended rest >14d after ACWR >=1.4, performance drops >10%)
+  - `InjuryRiskModel`: synthetic-data baseline fallback (1600 samples, same RF architecture)
+  - `InjuryRiskModel.predict_probability` delegates to trained model when provided, falls back to synthetic
+
+- `lstm_model.py` + `lstm_inference.py` (Phase 5):
+  - `torch.nn.Module` (PirxLSTM): 17-feature LSTM with configurable hidden/dropout
+  - `LSTMTrainer`: train with Huber loss + Adam, early stopping, sequence building
+  - `optuna.create_study` for per-user hyperparameter optimization (60 trials)
+  - promotion threshold: best trial Huber loss <= 0.34
+  - inference adapter loads active model artifacts with heuristic fallback
+
+- `workout_similarity.py` + `trajectory_engine.py` (Phase 6):
+  - `dtaidistance.dtw.distance()` for pace-profile and training block comparison
+  - block fingerprinting (pace, distance, duration, HR means over 14-day windows)
+  - trajectory scenarios predicted from top-k most similar historical blocks
+  - falls back to fixed-multiplier heuristic trajectories
+
+- `learning_module.py` (Phase 7):
+  - `sklearn.cluster.KMeans` on intensity distribution vectors for training type classification (pyramidal/polarized/threshold-heavy/mixed)
+  - `scipy.stats.pearsonr`/`spearmanr` for feature-to-driver correlation detection
+  - personal ACWR danger zone detection via ACWR-performance correlation
+  - heuristic fallback for insufficient data (threshold rules)
+
+- `lmc.py` (non-primary, unchanged):
+  - rank-based local matrix completion in log-time space
+  - coefficient bounds: `lambda0` in `[1.08, 1.15]`, speed-endurance in `[-0.4, 0.4]`
 
 ## Where Model Outputs Are Used in the App
 
@@ -863,3 +893,53 @@ See `pirx-backend/migrations/README.md` for the canonical migration order and ex
   - Celery queues: `celery,sync,projection` -> `celery,sync,projection,ml`
   - sklearn import in `InjuryRiskModel._get_model()` moved from module-level to function-level (lazy load)
 - **Verification**: `python -m pytest tests/test_terra.py tests/test_ml_tasks.py tests/test_services_wiring.py tests/test_readiness.py tests/test_projection_engine.py tests/test_shap_explainer.py -v` (179 passed, 0 failed).
+
+## README Delta - Real ML Library Integration (Phases 1-7)
+
+- **What changed**: Replaced all heuristic/scaffold ML modules with real trained implementations using sklearn, PyTorch, SHAP, Optuna, dtaidistance, and scipy. Added 7 new or substantially rewritten modules and a comprehensive 44-test ML verification suite.
+- **Why it changed**: ML modules were using hardcoded weights, arithmetic formulas, synthetic-only training data, and simulated Optuna trials instead of real library calls. This upgrade ensures every ML path uses genuine trained models with graceful heuristic fallback.
+- **Code touchpoints**:
+  - **New files**: `app/ml/gb_projection_model.py`, `app/ml/lstm_model.py`, `app/ml/workout_similarity.py`, `tests/test_real_ml.py`
+  - **Modified**: `app/ml/shap_explainer.py`, `app/ml/readiness_engine.py`, `app/ml/injury_risk_model.py`, `app/ml/lstm_inference.py`, `app/ml/trajectory_engine.py`, `app/ml/learning_module.py`, `app/tasks/ml_tasks.py`, `tests/test_ml_tasks.py`
+- **Data-flow impact**: ML training/inference stages. No changes to ingest, cleaning, feature engineering, API contracts, frontend, or chat. All modules maintain heuristic fallback when trained models are unavailable.
+- **Formula/constant changes**:
+  - GB Projection: GradientBoostingRegressor with Huber loss, lr=0.008, max_depth=4, n_estimators=200, 17 features
+  - Readiness: GradientBoostingClassifier, 9 features, min 5 race-day samples to train
+  - Injury Risk: TrainableInjuryRiskModel (RF on real signals), min 30 proxy signals; InjurySignalExtractor detects extended rest >14d after ACWR>=1.4 and performance drops >10%
+  - LSTM: PirxLSTM (hidden=17, seq_len=11, dropout=0.5), Huber loss, Adam optimizer; Optuna 60 trials, promotion at loss<=0.34
+  - DTW: dtaidistance for pace profile + block fingerprint comparison; trajectory from top-k similar historical blocks
+  - Learning: KMeans on Z1-Z5 intensity distributions; Pearson/Spearman for feature-driver correlation; personal ACWR threshold via negative performance correlation
+- **API/schema impact**: `ReadinessEngine.compute_readiness` gains optional `trained_classifier` parameter; `InjuryRiskModel.predict_probability` gains optional `trained_model` parameter. No API contract or schema changes.
+- **Verification**: `python -m pytest tests/test_real_ml.py tests/test_ml_tasks.py -v` (52 passed, 0 failed).
+
+## README Delta - ML Infrastructure Bug Fix Sweep (32 bugs)
+
+- **What changed**: Fixed 32 bugs across ML modules, projection engine, feature service, task orchestration, and production route wiring. Added 9 regression tests covering critical fixes.
+- **Why it changed**: Deep audit of ML infrastructure revealed temporal data leakage, broken LSTM inference, NaN propagation, ACWR mis-scoring, orphaned DB records, training type misclassification, unscaled DTW features, cache race conditions, and 7 integration wiring gaps where ML models existed but were never called in production routes.
+- **Code touchpoints**:
+  - `app/tasks/ml_tasks.py`: BUG-15 (reference_date for temporal alignment), BUG-21 (Riegel scaling for non-5K), BUG-10 (effective minimum 120 activities for LSTM), BUG-17 (deactivate_active_models + promotion_confidence), BUG-25 (failure cleanup for orphaned DB records)
+  - `app/ml/lstm_inference.py`: BUG-16 (full feature sequence from DB, not single timestep), BUG-14 (TTL-based cache eviction)
+  - `app/ml/projection_engine.py`: PE-1+PE-3 (NaN guards on baseline and features), PE-2 (U-shaped ACWR normalization), PE-4 (even distribution when all driver weights=0)
+  - `app/services/feature_service.py`: BUG-23 (EWMA seed arr[0]), BUG-28 (explicit sort for trend_slope), FS-1 (upper-bound window filter), FS-2 (copy before timestamp mutation), FS-3 (inclusive current-day in consistency buckets)
+  - `app/ml/gb_projection_model.py`: BUG-5 (weighted cross-validation via cross_validate params)
+  - `app/ml/readiness_engine.py`: BUG-18 (explicit None check instead of 0-or-default)
+  - `app/ml/learning_module.py`: BUG-19 (Polarized vs Pyramidal via z3_pct), BUG-26 (date-based correlation pairing)
+  - `app/ml/trajectory_engine.py`: BUG-20 (calendar-day blocks instead of activity-count slicing)
+  - `app/ml/injury_risk_model.py`: BUG-13 (threading.Lock instead of LRU cache), BUG-22 (continuous calibration function)
+  - `app/ml/workout_similarity.py`: BUG-24 (z-score normalize features before DTW)
+  - `app/ml/baseline_estimator.py`: BUG-27 (Riegel scaling for non-5K in tier 2)
+  - `app/routers/projection.py`: INT-1 (load active GB model for SHAP), INT-2 (pass activity+projection history to TrajectoryEngine)
+  - `app/routers/drivers.py`: INT-1 (load GB model for explain_driver SHAP)
+  - `app/routers/readiness.py`: INT-4 (pass hrv_trend/resting_hr_trend from features), INT-5 (try trained InjuryRiskModel from registry), INT-6 (top-level error wrapper)
+  - `app/tasks/projection_tasks.py`: INT-3 (prefer feature_snapshots over projection_state rows)
+  - `app/services/supabase_client.py`: Added get_recent_feature_snapshots for LSTM sequence building
+  - Tests: Updated `test_real_ml.py` (added TestBugFixSweepRegressions class with 9 regression tests), `test_ml_tasks.py`, `test_baseline_estimator.py`
+- **Data-flow impact**: Feature computation (EWMA seed, window filters, sort order), projection engine (NaN guards, ACWR scoring, driver decomposition), ML training (temporal alignment, Riegel scaling, sequence building), and production wiring (SHAP, DTW, trained models connected to routes).
+- **Formula/constant changes**:
+  - EWMA: seed changed from mean(non_zero) to arr[0] (standard EWMA initialization)
+  - ACWR scoring: linear "higher is better" replaced with U-shaped `score = 100 * (1 - min(|acwr - 1.05| / 0.5, 1.0))`
+  - Calibration: piecewise function made continuous at boundaries (slopes 0.9/1.0/0.9)
+  - Riegel scaling applied in baseline_estimator tier 2 and _build_gb_training_data for non-5K distances
+  - LSTM minimum activities raised from MIN_LSTM_SAMPLES to max(MIN_LSTM_SAMPLES, 120)
+- **API/schema impact**: No API contract changes. ReadinessEngine now receives physiology params from features dict. SHAP explanations may use real TreeExplainer when trained GB model exists.
+- **Verification**: `python -m pytest tests/test_real_ml.py tests/test_ml_tasks.py tests/test_projection_engine.py tests/test_features.py tests/test_readiness.py tests/test_learning_module.py tests/test_baseline_estimator.py tests/test_shap_explainer.py tests/test_trajectory.py tests/test_event_scaling.py -v` (213 passed, 0 failed).

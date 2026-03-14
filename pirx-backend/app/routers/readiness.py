@@ -25,6 +25,19 @@ async def get_readiness(
     event: str = Query(default="5000"),
     user: dict = Depends(get_current_user),
 ):
+    try:
+        return await _compute_readiness(event, user)
+    except Exception:
+        logger.exception("Readiness computation failed")
+        return ReadinessResponse(
+            score=0,
+            label="Error",
+            components={},
+            factors=[{"name": "Computation error", "impact": "neutral", "detail": "Please try again later."}],
+        )
+
+
+async def _compute_readiness(event: str, user: dict) -> ReadinessResponse:
     db = SupabaseService()
     activities_raw = db.get_recent_activities(user["user_id"], days=180)
 
@@ -77,6 +90,8 @@ async def get_readiness(
             days_since_last_threshold=days_since_threshold,
             days_since_last_long_run=days_since_long_run,
             days_since_last_race=days_since_race,
+            resting_hr_trend=features.get("resting_hr_trend"),
+            hrv_trend=features.get("hrv_trend"),
             sleep_score=sleep_score,
         )
     else:
@@ -87,7 +102,21 @@ async def get_readiness(
             factors=[{"name": "No activities synced", "impact": "neutral", "detail": "Sync a wearable to see your readiness score."}],
         )
 
-    injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
+    try:
+        from app.ml.injury_risk_model import TrainableInjuryRiskModel
+        trained_injury = None
+        active_injury = db.get_active_model(user["user_id"], "injury_risk")
+        if active_injury and active_injury.get("model_family") == "injury_risk":
+            artifact = db.get_latest_model_artifact(active_injury.get("model_id"))
+            if artifact and isinstance(artifact.get("weight_bytes"), bytes):
+                trained_injury = TrainableInjuryRiskModel()
+                trained_injury.deserialize(artifact["weight_bytes"])
+        if trained_injury and trained_injury.is_trained:
+            injury_risk_prob = trained_injury.predict(features, sleep_score)
+        else:
+            injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
+    except Exception:
+        injury_risk_prob = InjuryRiskModel.predict_probability(features, sleep_score)
     risk_band = InjuryRiskModel.get_risk_band(injury_risk_prob)
     latest_custom_fields = latest_physiology.get("custom_fields") if activities_raw else {}
     if not isinstance(latest_custom_fields, dict):

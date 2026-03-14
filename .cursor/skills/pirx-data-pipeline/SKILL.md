@@ -40,7 +40,9 @@ CELERY_CONFIG = {
 |---|---|---|---|---|
 | `feature_engineering` | projection | High | Activity sync webhook | 2-5 sec |
 | `recompute_projection` | projection | High | Feature shift ≥ 2 sec | 5-15 sec |
-| `train_user_model` | ml | Low | Weekly or 20+ new activities | 30-120 sec |
+| `train_user_gb` | ml | Low | Weekly or 20+ new activities | 10-30 sec |
+| `train_user_lstm` | ml | Low | Weekly or 60+ activities | 30-120 sec |
+| `tune_user_lstm` | ml | Low | Weekly cron | 60-300 sec |
 | `generate_embeddings` | chat | Medium | Projection change, insight | 1-3 sec |
 | `structural_decay_check` | projection | Medium | Daily pg_cron | 1 sec/user |
 | `weekly_summary` | sync | Low | Weekly cron | 5-10 sec/user |
@@ -203,4 +205,4 @@ No daily micro-alerts.
 
 ## Dependencies
 
-`celery[redis]`, `redis`, `numpy`, `pandas`, `scipy`, `scikit-learn`, `torch`, `openai`
+`celery[redis]`, `redis`, `numpy`, `pandas`, `scipy`, `scikit-learn`, `torch`, `shap`, `optuna`, `dtaidistance`, `joblib`, `openai`

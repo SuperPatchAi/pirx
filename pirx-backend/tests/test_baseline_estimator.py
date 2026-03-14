@@ -68,16 +68,14 @@ class TestEstimate5kBaseline:
         assert result > 1000
 
     def test_tier2_sustained_effort(self):
-        """A fast 4km run at high HR should be picked up by tier-2."""
+        """A fast 4km run at high HR should be picked up by tier-2 with Riegel scaling."""
         acts = [_make_activity(pace=310, avg_hr=140, max_hr=185) for _ in range(10)]
-        # Add a hard 4km: pace 240 s/km, HR 163/185 = 88.1% (> 85%)
         acts.append(_make_activity(
             pace=240.0, distance=4000.0, duration=960.0,
             avg_hr=163, max_hr=185,
         ))
         result = estimate_5k_baseline(acts)
-        # Tier 2: fastest sustained effort at 240 s/km * 5 = 1200s
-        assert result <= 1200
+        assert result <= 1250
         assert result > 900
 
     def test_no_hr_data_falls_to_tier3(self):

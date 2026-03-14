@@ -184,7 +184,12 @@ def _fastest_sustained_effort(activities: list[dict]) -> Optional[float]:
         if hr_pct is None or hr_pct < 0.85:
             continue
 
-        equiv_5k = pace * 5.0
+        run_time_s = pace * (dist / 1000.0)
+        if 4500 <= dist <= 5500:
+            equiv_5k = run_time_s
+        else:
+            from app.ml.event_scaling import EventScaler
+            equiv_5k = EventScaler.riegel_scale(run_time_s, dist, 5000)
         candidates.append(equiv_5k)
 
     if not candidates:

@@ -384,6 +384,21 @@ class SupabaseService:
         )
         return result.data or []
 
+    def get_recent_feature_snapshots(self, user_id: str, limit: int = 11) -> list[dict]:
+        """Get recent feature_snapshots ordered newest-first for LSTM sequence building."""
+        try:
+            result = (
+                self.client.table("feature_snapshots")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("snapshot_date", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return result.data or []
+        except Exception:
+            return []
+
     # --- Model Metrics ---
 
     def insert_model_metric(self, data: dict) -> dict:

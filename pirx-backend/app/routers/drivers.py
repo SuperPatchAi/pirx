@@ -135,7 +135,19 @@ async def explain_driver(
             "confidence": "low",
         }
 
-    explanation = SHAPExplainer.explain_driver(driver_name, features)
+    gb_model = None
+    try:
+        from app.ml.gb_projection_model import GBProjectionModel
+        active = db.get_active_model(user["user_id"], "5000")
+        if active and active.get("model_family") == "gb":
+            artifact = db.get_latest_model_artifact(active.get("model_id"))
+            if artifact and isinstance(artifact.get("weight_bytes"), bytes):
+                gb_model = GBProjectionModel()
+                gb_model.deserialize(artifact["weight_bytes"])
+    except Exception:
+        pass
+
+    explanation = SHAPExplainer.explain_driver(driver_name, features, gb_model=gb_model)
     return {
         "driver_name": explanation.driver_name,
         "display_name": explanation.display_name,

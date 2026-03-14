@@ -1,14 +1,16 @@
 """SHAP-based driver explanation engine.
 
-Provides feature-level explanations for driver changes using
-Shapley values from a lightweight gradient boosting model.
-
-When insufficient data exists, falls back to heuristic explanations
-based on feature deltas.
+Uses real SHAP TreeExplainer on trained Gradient Boosting models to compute
+Shapley values for feature-level driver attribution. Falls back to heuristic
+explanations when no trained model is available.
 """
-import numpy as np
+import logging
 from typing import Optional
 from dataclasses import dataclass
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -72,19 +74,120 @@ INVERSE_FEATURES = {"weekly_load_stddev", "block_variance", "session_density_sta
 
 
 class SHAPExplainer:
-    """Generates SHAP-based or heuristic driver explanations."""
+    """Generates SHAP-based or heuristic driver explanations.
+
+    When a trained GBProjectionModel is provided, uses real SHAP TreeExplainer
+    to compute Shapley values. Otherwise falls back to feature-delta heuristics.
+    """
+
+    @staticmethod
+    def explain_with_shap(
+        driver_name: str,
+        current_features: dict[str, Optional[float]],
+        gb_model: "GBProjectionModel",
+    ) -> Optional[DriverExplanation]:
+        """Explain a driver using real SHAP TreeExplainer on a trained GB model.
+
+        Returns None if SHAP computation fails; caller should fall back to heuristic.
+        """
+        try:
+            import shap
+
+            if not gb_model.is_trained or gb_model.model is None:
+                return None
+
+            X = gb_model._features_to_array([current_features])
+            explainer = shap.TreeExplainer(gb_model.model)
+            shap_values = explainer.shap_values(X)
+
+            if shap_values is None or len(shap_values) == 0:
+                return None
+
+            feature_names = gb_model.feature_names
+            shap_row = shap_values[0]
+
+            display_name = DRIVER_DISPLAY_NAMES.get(driver_name, driver_name)
+            relevant_features = DRIVER_FEATURE_MAP.get(driver_name, [])
+
+            driver_shap_total = 0.0
+            feature_impacts = []
+
+            for feat in relevant_features:
+                if feat not in feature_names:
+                    continue
+                idx = feature_names.index(feat)
+                shap_val = float(shap_row[idx])
+                driver_shap_total += shap_val
+
+                if abs(shap_val) < 0.001:
+                    continue
+
+                direction = "improving" if shap_val > 0 else "declining"
+                feature_impacts.append({
+                    "name": feat,
+                    "display_name": FEATURE_DESCRIPTIONS.get(feat, feat),
+                    "contribution": round(abs(shap_val), 3),
+                    "shap_value": round(shap_val, 3),
+                    "direction": direction,
+                })
+
+            feature_impacts.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+            top_features = feature_impacts[:3]
+
+            if driver_shap_total > 0.5:
+                overall = "improving"
+            elif driver_shap_total < -0.5:
+                overall = "declining"
+            else:
+                overall = "stable"
+
+            parts = []
+            for f in top_features:
+                parts.append(
+                    f"{f['display_name']} contributed {f['shap_value']:.1f}s"
+                )
+
+            if parts:
+                narrative = (
+                    f"Your {display_name} is {overall} "
+                    f"(net SHAP: {driver_shap_total:+.1f}s). "
+                    f"The model learned that {', and '.join(parts)}."
+                )
+            else:
+                narrative = f"Your {display_name} has minimal SHAP contribution in the current model."
+
+            return DriverExplanation(
+                driver_name=driver_name,
+                display_name=display_name,
+                overall_direction=overall,
+                top_features=top_features,
+                narrative=narrative,
+                confidence="high",
+            )
+
+        except Exception:
+            logger.exception("SHAP explanation failed for %s", driver_name)
+            return None
 
     @staticmethod
     def explain_driver(
         driver_name: str,
         current_features: dict[str, Optional[float]],
         previous_features: Optional[dict[str, Optional[float]]] = None,
+        gb_model: Optional["GBProjectionModel"] = None,
     ) -> DriverExplanation:
         """Generate an explanation for a driver's current state or change.
 
-        If previous_features is provided, explains the change.
-        Otherwise, explains the current state.
+        Tries real SHAP first if a trained GB model is provided.
+        Falls back to heuristic delta-based or state-based explanation.
         """
+        if gb_model is not None:
+            shap_result = SHAPExplainer.explain_with_shap(
+                driver_name, current_features, gb_model,
+            )
+            if shap_result is not None:
+                return shap_result
+
         display_name = DRIVER_DISPLAY_NAMES.get(driver_name, driver_name)
         relevant_features = DRIVER_FEATURE_MAP.get(driver_name, [])
 
@@ -106,7 +209,7 @@ class SHAPExplainer:
         current: dict,
         previous: dict,
     ) -> DriverExplanation:
-        """Explain a driver change using feature deltas."""
+        """Explain a driver change using feature deltas (heuristic fallback)."""
         feature_impacts = []
 
         for feat in relevant_features:
@@ -183,7 +286,7 @@ class SHAPExplainer:
         relevant_features: list[str],
         features: dict,
     ) -> DriverExplanation:
-        """Explain the current state of a driver."""
+        """Explain the current state of a driver (heuristic fallback)."""
         feature_states = []
 
         baselines = {

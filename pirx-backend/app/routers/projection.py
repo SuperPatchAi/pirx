@@ -160,6 +160,30 @@ def _load_user_features(user_id: str) -> dict | None:
     return None
 
 
+def _load_active_gb_model(user_id: str, event: str = "5000"):
+    """Load the active trained GB model from the registry, if available."""
+    try:
+        from app.ml.gb_projection_model import GBProjectionModel
+
+        db = SupabaseService()
+        active = db.get_active_model(user_id, event)
+        if not active or active.get("model_family") != "gb":
+            return None
+        model_id = active.get("model_id")
+        artifact = db.get_latest_model_artifact(model_id) if model_id else None
+        if not artifact:
+            return None
+        weight_bytes = artifact.get("weight_bytes")
+        if not weight_bytes or not isinstance(weight_bytes, bytes):
+            return None
+        gb = GBProjectionModel()
+        gb.deserialize(weight_bytes)
+        return gb
+    except Exception:
+        logger.debug("Could not load active GB model for SHAP")
+        return None
+
+
 def _build_projection_narrative(driver_explanations: list[dict]) -> str:
     """Combine per-driver narratives into a 2-3 sentence top-level narrative."""
     sorted_drivers = sorted(driver_explanations, key=lambda d: abs(d["contribution_seconds"]), reverse=True)
@@ -209,11 +233,13 @@ async def explain_projection(
         for key in DRIVER_KEYS:
             driver_contributions[key] = row.get(f"{key}_seconds", 0.0)
 
+    gb_model = _load_active_gb_model(user["user_id"], event)
+
     driver_explanations = []
     confidences = []
 
     for key in DRIVER_KEYS:
-        explanation = SHAPExplainer.explain_driver(key, features)
+        explanation = SHAPExplainer.explain_driver(key, features, gb_model=gb_model)
         contrib = driver_contributions.get(key, 0.0)
         driver_explanations.append({
             "driver_name": key,
@@ -301,13 +327,17 @@ async def get_trajectory(
         from app.models.activities import NormalizedActivity
         from app.services.feature_service import FeatureService
         activities = [NormalizedActivity.from_db_dict(a) for a in activities_raw]
-        real_features = FeatureService.compute_all_features(activities)
+        real_features = FeatureService.compute_all_features(activities, user_id=user["user_id"])
+
+        projection_history_rows = db.get_projection_history(user["user_id"], event, days=180)
 
         scenarios = engine.compute_trajectories(
             user_id=user["user_id"],
             event=event,
             baseline_time_s=baseline_time,
             current_features=real_features,
+            activity_history=activities_raw,
+            projection_history=projection_history_rows or [],
         )
         return TrajectoryResponse(
             event=event,

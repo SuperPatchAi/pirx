@@ -56,6 +56,8 @@ class FeatureService:
         if reference_date.tzinfo is not None:
             reference_date = reference_date.replace(tzinfo=None)
 
+        from copy import copy
+        activities = [copy(a) for a in activities]
         for a in activities:
             if a.timestamp and a.timestamp.tzinfo:
                 a.timestamp = a.timestamp.replace(tzinfo=None)
@@ -72,11 +74,11 @@ class FeatureService:
     def _filter_window(
         activities: list[NormalizedActivity], ref: datetime, days: int
     ) -> list[NormalizedActivity]:
-        """Filter activities within the last N days from reference date."""
+        """Filter activities within the last N days from reference date, excluding future."""
         cutoff = ref - timedelta(days=days)
         return [
             a for a in activities
-            if (a.timestamp.replace(tzinfo=None) if a.timestamp.tzinfo else a.timestamp) >= cutoff
+            if cutoff <= (a.timestamp.replace(tzinfo=None) if a.timestamp.tzinfo else a.timestamp) <= ref
         ]
 
     # --- Volume Domain ---
@@ -220,12 +222,14 @@ class FeatureService:
     ) -> dict:
         w42 = FeatureService._filter_window(activities, ref, 42)
 
+        ref_eod = ref.replace(hour=23, minute=59, second=59, microsecond=999999)
+
         weekly_loads: list[float] = []
         for week_offset in range(6):
             week_start = ref - timedelta(days=7 * (week_offset + 1))
-            week_end = ref - timedelta(days=7 * week_offset)
+            week_end = ref_eod - timedelta(days=7 * week_offset)
             week_activities = [
-                a for a in w42 if week_start <= a.timestamp < week_end
+                a for a in w42 if week_start <= a.timestamp <= week_end
             ]
             weekly_loads.append(sum(a.distance_meters or 0 for a in week_activities))
 
@@ -234,9 +238,9 @@ class FeatureService:
         block_loads: list[float] = []
         for block_offset in range(3):
             block_start = ref - timedelta(days=14 * (block_offset + 1))
-            block_end = ref - timedelta(days=14 * block_offset)
+            block_end = ref_eod - timedelta(days=14 * block_offset)
             block_activities = [
-                a for a in w42 if block_start <= a.timestamp < block_end
+                a for a in w42 if block_start <= a.timestamp <= block_end
             ]
             block_loads.append(sum(a.distance_meters or 0 for a in block_activities))
 
@@ -245,8 +249,8 @@ class FeatureService:
         weekly_session_counts: list[int] = []
         for week_offset in range(6):
             week_start = ref - timedelta(days=7 * (week_offset + 1))
-            week_end = ref - timedelta(days=7 * week_offset)
-            count = sum(1 for a in w42 if week_start <= a.timestamp < week_end)
+            week_end = ref_eod - timedelta(days=7 * week_offset)
+            count = sum(1 for a in w42 if week_start <= a.timestamp <= week_end)
             weekly_session_counts.append(count)
 
         session_density_stability = (
@@ -303,11 +307,11 @@ class FeatureService:
         chronic_alpha = 2.0 / (chronic_days + 1)
 
         def ewma(arr: np.ndarray, alpha: float) -> float:
-            non_zero = arr[arr > 0]
-            seed = float(np.mean(non_zero)) if len(non_zero) > 0 else 0.0
-            result = seed
-            for val in arr:
-                result = alpha * val + (1 - alpha) * result
+            if len(arr) == 0:
+                return 0.0
+            result = float(arr[0])
+            for val in arr[1:]:
+                result = alpha * float(val) + (1 - alpha) * result
             return float(result)
 
         acute_load = (
@@ -340,9 +344,15 @@ class FeatureService:
             if not entries or len(entries) < 3:
                 return defaults
 
-            hr_vals = [e["resting_hr"] for e in entries if e.get("resting_hr") is not None]
-            hrv_vals = [e["hrv"] for e in entries if e.get("hrv") is not None]
-            sleep_vals = [e["sleep_score"] for e in entries if e.get("sleep_score") is not None]
+            sorted_entries = sorted(
+                entries,
+                key=lambda e: e.get("recorded_at", e.get("date", "")),
+                reverse=True,
+            )
+
+            hr_vals = [e["resting_hr"] for e in sorted_entries if e.get("resting_hr") is not None]
+            hrv_vals = [e["hrv"] for e in sorted_entries if e.get("hrv") is not None]
+            sleep_vals = [e["sleep_score"] for e in sorted_entries if e.get("sleep_score") is not None]
 
             def trend_slope(vals: list) -> float | None:
                 if len(vals) < 3:

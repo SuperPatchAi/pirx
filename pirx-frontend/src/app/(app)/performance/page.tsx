@@ -139,9 +139,9 @@ const SNAPSHOT = [
 ];
 
 const trendConfig: Record<string, { icon: typeof TrendingUp; color: string; label: string }> = {
-  improving: { icon: TrendingDown, color: "text-green-500", label: "Improving" },
+  improving: { icon: TrendingDown, color: "text-primary", label: "Improving" },
   stable: { icon: Minus, color: "text-muted-foreground", label: "Stable" },
-  declining: { icon: TrendingUp, color: "text-red-500", label: "Declining" },
+  declining: { icon: TrendingUp, color: "text-destructive", label: "Declining" },
 };
 
 type SnapshotRow = {
@@ -169,10 +169,10 @@ const EVENT_NAMES: Record<string, string> = {
 
 function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
   return (
-    <Card className="border-border/40">
+    <Card className="border-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
-          <Timer className="h-4 w-4 text-green-500" />
+          <Timer className="h-4 w-4 text-primary" />
           Fitness Snapshot
         </CardTitle>
       </CardHeader>
@@ -220,11 +220,11 @@ function FitnessSnapshotTable({ snapshot }: { snapshot: SnapshotRow[] }) {
 }
 
 function PerformanceSummary({ improvement, change21d, readiness }: { improvement: number; change21d: number; readiness: number }) {
-  const impColor = improvement > 0 ? "text-green-500" : improvement < 0 ? "text-red-400" : "text-muted-foreground";
-  const changeColor = change21d > 0 ? "text-green-500" : change21d < 0 ? "text-red-400" : "text-muted-foreground";
+  const impColor = improvement > 0 ? "text-primary" : improvement < 0 ? "text-destructive" : "text-muted-foreground";
+  const changeColor = change21d > 0 ? "text-primary" : change21d < 0 ? "text-destructive" : "text-muted-foreground";
   return (
     <div className="grid grid-cols-3 gap-3">
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-3 text-center">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Improvement</p>
           <p className={`text-xl font-bold tabular-nums ${impColor}`}>
@@ -233,7 +233,7 @@ function PerformanceSummary({ improvement, change21d, readiness }: { improvement
           <p className="text-[10px] text-muted-foreground/60">on 5K</p>
         </CardContent>
       </Card>
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-3 text-center">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">21-Day</p>
           <p className={`text-xl font-bold tabular-nums ${changeColor}`}>
@@ -242,10 +242,10 @@ function PerformanceSummary({ improvement, change21d, readiness }: { improvement
           <p className="text-[10px] text-muted-foreground/60">on 5K</p>
         </CardContent>
       </Card>
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-3 text-center">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Readiness</p>
-          <p className="text-xl font-bold tabular-nums text-green-500">{Math.round(readiness)}</p>
+          <p className="text-xl font-bold tabular-nums text-primary">{Math.round(readiness)}</p>
           <p className="text-[10px] text-muted-foreground/60">/100</p>
         </CardContent>
       </Card>
@@ -257,7 +257,7 @@ function PerformanceSummary({ improvement, change21d, readiness }: { improvement
    Drivers tab (5C)
    ──────────────────────────────────────────────────────────── */
 
-const DRIVER_COLORS = ["#22c55e", "#facc15", "#ef4444", "#f97316", "#22d3ee"];
+const DRIVER_COLORS = ["#0faaea", "#dc9518", "#d22d2d", "#5f665c", "#2eb8a1"];
 
 const DRIVER_DISPLAY: Record<string, string> = {
   aerobic_base: "Aerobic Base",
@@ -324,7 +324,7 @@ function DriversTab({
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -334,7 +334,7 @@ function DriversTab({
               <p className="text-xs text-muted-foreground/70 mt-0.5">Where time is gained and lost</p>
             </div>
             <div className="bg-secondary/60 rounded-lg px-3 py-1.5 text-right">
-              <p className={`text-lg font-bold tabular-nums ${netGained <= 0 ? "text-green-400" : "text-red-400"}`}>
+              <p className={`text-lg font-bold tabular-nums ${netGained <= 0 ? "text-primary" : "text-destructive"}`}>
                 {netGained <= 0 ? "" : "+"}{netGained.toFixed(0)}s
               </p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Net Gained</p>
@@ -354,7 +354,7 @@ function DriversTab({
                   <span className="text-sm font-medium text-foreground/90">{label}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">{trend}</span>
-                    <span className={`text-sm font-semibold tabular-nums ${secs <= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`text-sm font-semibold tabular-nums ${secs <= 0 ? "text-primary" : "text-destructive"}`}>
                       {formatDelta(secs)}
                     </span>
                   </div>
@@ -415,7 +415,7 @@ function DriversTab({
                           return (
                             <div key={f.name} className="flex items-center justify-between text-xs">
                               <span className="text-muted-foreground">{f.display_name ?? f.name}</span>
-                              <span className={`tabular-nums font-medium ${f.direction === "improved" ? "text-green-400" : f.direction === "declined" ? "text-red-400" : ""}`}>
+                              <span className={`tabular-nums font-medium ${f.direction === "improved" ? "text-primary" : f.direction === "declined" ? "text-destructive" : ""}`}>
                                 {formatDelta(val)}
                               </span>
                             </div>
@@ -438,7 +438,7 @@ function DriversTab({
    Zones tab (5E)
    ──────────────────────────────────────────────────────────── */
 
-const ZONE_COLORS = ["#94a3b8", "#22c55e", "#facc15", "#f97316", "#ef4444"];
+const ZONE_COLORS = ["#4b5049", "#0faaea", "#dc9518", "#d22d2d", "#2eb8a1"];
 
 interface ZonesData {
   zones: { name: string; hr_range: string; pace_range: string; time_pct: number }[];
@@ -575,7 +575,7 @@ function EconomyTab({ data, loading }: { data: EconomyData | null; loading: bool
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground">Efficiency Gain</p>
-                <p className="text-sm font-medium tabular-nums text-green-500">
+                <p className="text-sm font-medium tabular-nums text-primary">
                   {band.efficiency_gain > 0 ? "+" : ""}{band.efficiency_gain}%
                 </p>
               </div>
@@ -595,7 +595,7 @@ function EconomyTab({ data, loading }: { data: EconomyData | null; loading: bool
       <Card>
         <CardContent className="p-4 text-center">
           <p className="text-[10px] text-muted-foreground">HR Cost Change</p>
-          <p className={`text-2xl font-bold tabular-nums ${data.hr_cost_change <= 0 ? "text-green-500" : "text-red-500"}`}>
+          <p className={`text-2xl font-bold tabular-nums ${data.hr_cost_change <= 0 ? "text-primary" : "text-destructive"}`}>
             {data.hr_cost_change > 0 ? "+" : ""}{data.hr_cost_change}%
           </p>
         </CardContent>
@@ -622,7 +622,7 @@ function EconomyTab({ data, loading }: { data: EconomyData | null; loading: bool
                     <TableCell className="text-sm font-medium">{lvl.level}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{lvl.baseline}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums font-medium">{lvl.current}</TableCell>
-                    <TableCell className={`text-xs text-right tabular-nums ${lvl.delta <= 0 ? "text-green-500" : "text-red-500"}`}>
+                    <TableCell className={`text-xs text-right tabular-nums ${lvl.delta <= 0 ? "text-primary" : "text-destructive"}`}>
                       {formatDelta(lvl.delta)}
                     </TableCell>
                   </TableRow>
@@ -633,7 +633,7 @@ function EconomyTab({ data, loading }: { data: EconomyData | null; loading: bool
         </Card>
       )}
       <Collapsible>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CollapsibleTrigger asChild>
             <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
               <span className="text-sm font-medium">Why this number?</span>
@@ -722,7 +722,7 @@ function RecoveryBodyTab({ data, loading }: { data: RecoveryBodyData | null; loa
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Moon className="h-4 w-4" />
@@ -762,7 +762,7 @@ function RecoveryBodyTab({ data, loading }: { data: RecoveryBodyData | null; loa
       </Card>
 
       <Collapsible>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CollapsibleTrigger asChild>
             <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
               <span className="text-sm font-medium">Why this number?</span>
@@ -794,17 +794,17 @@ function RecoveryBodyTab({ data, loading }: { data: RecoveryBodyData | null; loa
 }
 
 function getReadinessColor(score: number): string {
-  if (score >= 95) return "bg-green-500/20 text-green-500 border border-green-500/30";
-  if (score >= 88) return "bg-green-500/15 text-green-400 border border-green-500/25";
+  if (score >= 95) return "bg-primary/20 text-primary border border-primary/30";
+  if (score >= 88) return "bg-primary/15 text-primary border border-primary/25";
   if (score >= 75) return "bg-yellow-500/15 text-yellow-400 border border-yellow-500/25";
   if (score >= 60) return "bg-gray-500/15 text-gray-400 border border-gray-500/25";
-  return "bg-red-500/15 text-red-400 border border-red-500/25";
+  return "bg-destructive/15 text-destructive border border-destructive/25";
 }
 
 function getReadinessRingColor(score: number): string {
-  if (score >= 75) return "text-green-500";
+  if (score >= 75) return "text-primary";
   if (score >= 60) return "text-yellow-400";
-  return "text-red-400";
+  return "text-destructive";
 }
 
 function ReadinessRing({ score }: { score: number }) {
@@ -812,7 +812,7 @@ function ReadinessRing({ score }: { score: number }) {
   const r = 60;
   const circumference = 2 * Math.PI * r;
   const offset = circumference - (pct / 100) * circumference;
-  const ringColor = score >= 75 ? "#22c55e" : score >= 60 ? "#facc15" : "#ef4444";
+  const ringColor = score >= 75 ? "#0faaea" : score >= 60 ? "#dc9518" : "#d22d2d";
 
   return (
     <div className="relative w-36 h-36">
@@ -841,7 +841,7 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-6 flex flex-col items-center gap-3">
           <ReadinessRing score={data.score} />
           <Badge className={getReadinessColor(data.score)}>{data.label}</Badge>
@@ -850,7 +850,7 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
       </Card>
 
       {data.components && data.components.length > 0 && (
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">Component Breakdown</CardTitle>
           </CardHeader>
@@ -863,7 +863,7 @@ function ReadinessTab({ data, loading }: { data: ReadinessData | null; loading: 
                 </div>
                 <div className="h-2 bg-secondary/50 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-green-500 transition-all duration-500"
+                    className="h-full rounded-full bg-primary transition-all duration-500"
                     style={{ width: `${Math.min(c.value, 100)}%` }}
                   />
                 </div>
@@ -904,14 +904,14 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
   const riskBand = getInjuryRiskBand(riskScore);
   const riskClass =
     riskBand === "low"
-      ? "bg-green-500/15 text-green-400 border border-green-500/25"
+      ? "bg-primary/15 text-primary border border-primary/25"
       : riskBand === "moderate"
         ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/25"
-        : "bg-red-500/15 text-red-400 border border-red-500/25";
+        : "bg-destructive/15 text-destructive border border-destructive/25";
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-6 flex items-center justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Injury Risk Readiness</p>
@@ -920,7 +920,7 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
           <Badge className={riskClass}>{riskBand.toUpperCase()}</Badge>
         </CardContent>
       </Card>
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
             {riskFactor?.detail ?? "Risk reflects recent load, consistency, and physiological strain signals."}
@@ -928,7 +928,7 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
         </CardContent>
       </Card>
       <Collapsible>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CollapsibleTrigger asChild>
             <button className="w-full text-left p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors">
               <span className="text-sm font-medium">Why this number?</span>
@@ -942,9 +942,9 @@ function InjuryRiskTab({ data, loading }: { data: ReadinessData | null; loading:
                   const impact = (f.impact ?? "neutral").toLowerCase();
                   const impactClass =
                     impact === "negative"
-                      ? "text-red-400"
+                      ? "text-destructive"
                       : impact === "positive"
-                        ? "text-green-500"
+                        ? "text-primary"
                         : "text-yellow-400";
                   return (
                     <div key={`${f.title ?? "factor"}-${idx}`} className="rounded-md border border-border/50 p-3 space-y-1.5">
@@ -1094,7 +1094,7 @@ function AdjunctsTab({ data, loading }: { data: AdjunctItem[] | null; loading: b
                 </div>
                 <div>
                   <p className="text-muted-foreground">Projection Delta</p>
-                  <p className={`font-medium tabular-nums ${adj.median_projection_delta <= 0 ? "text-green-500" : "text-red-500"}`}>
+                  <p className={`font-medium tabular-nums ${adj.median_projection_delta <= 0 ? "text-primary" : "text-destructive"}`}>
                     {formatDelta(adj.median_projection_delta)}
                   </p>
                 </div>
@@ -1149,7 +1149,7 @@ const SECTION_CONFIG = [
     icon: Shield,
     bg: "bg-green-50 dark:bg-green-950/30",
     border: "border-green-200 dark:border-green-900",
-    iconColor: "text-green-600 dark:text-green-400",
+    iconColor: "text-green-600 dark:text-primary",
   },
   {
     key: "what_is_defensible" as const,
@@ -1366,7 +1366,7 @@ function AccuracyTab({
                       </TableCell>
                       <TableCell
                         className={`text-xs text-right tabular-nums font-medium ${
-                          Math.abs(r.error_seconds) <= 7 ? "text-green-500" : "text-amber-500"
+                          Math.abs(r.error_seconds) <= 7 ? "text-primary" : "text-[#dc9518]"
                         }`}
                       >
                         {formatDelta(r.error_seconds)}
@@ -1812,14 +1812,14 @@ export default function PerformancePage() {
       <div>
         <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">8-Week Overview</p>
         <h1 className="text-2xl font-bold tracking-tight">
-          Performance <span className="text-green-500">Trends</span>
+          Performance <span className="text-primary">Trends</span>
         </h1>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full bg-secondary/50">
-          <TabsTrigger value="overview" className="flex-1 data-[state=active]:bg-green-500/15 data-[state=active]:text-green-500">Overview</TabsTrigger>
-          <TabsTrigger value="analysis" className="flex-1 data-[state=active]:bg-green-500/15 data-[state=active]:text-green-500">Analysis</TabsTrigger>
+          <TabsTrigger value="overview" className="flex-1 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">Overview</TabsTrigger>
+          <TabsTrigger value="analysis" className="flex-1 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">Analysis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -1830,10 +1830,10 @@ export default function PerformancePage() {
           />
           <FitnessSnapshotTable snapshot={snapshot} />
 
-          <Card className="border-border/40">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-green-500" /> 5K Projection Over Time
+                <BarChart3 className="h-4 w-4 text-primary" /> 5K Projection Over Time
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1859,11 +1859,11 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/40">
+          <Card className="border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-green-500" />
+                  <Target className="h-4 w-4 text-primary" />
                   <div>
                     <p className="text-sm font-medium">Baseline Race</p>
                     <p className="text-xs text-muted-foreground">
@@ -1878,7 +1878,7 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/40">
+          <Card className="border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium">Recovery & Body Signals</p>
@@ -1905,11 +1905,11 @@ export default function PerformancePage() {
                 </div>
               </div>
               <Collapsible className="mt-3">
-                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-green-500 hover:text-green-400">
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-primary hover:text-primary">
                   Why this number?
                   <ChevronDown className="h-3 w-3" />
                 </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 rounded-md border border-border/60 bg-muted/20 p-3">
+                <CollapsibleContent className="mt-2 rounded-md border border-border bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">
                     Values come from the most recent wearable physiology entry synced from Terra
                     `sleep` and `body` webhooks. Sleep score is shown on a 0-100 scale, while
@@ -1920,7 +1920,7 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/40">
+          <Card className="border-border">
             <CardContent className="p-4 space-y-2">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Model & Risk</p>
               <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1952,10 +1952,10 @@ export default function PerformancePage() {
             <CarouselContent>
               {ANALYSIS_SECTIONS.map(({ key, label, icon: Icon }) => (
                 <CarouselItem key={key}>
-                  <Card className="border-border/40 min-h-[420px]">
+                  <Card className="border-border min-h-[420px]">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-green-500" /> {label}
+                        <Icon className="h-4 w-4 text-primary" /> {label}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>{renderAnalysisContent(key)}</CardContent>
@@ -1974,7 +1974,7 @@ export default function PerformancePage() {
                 <button
                   key={s.key}
                   className={`h-1.5 rounded-full transition-all ${
-                    i === activeSlide ? "w-4 bg-green-500" : "w-1.5 bg-muted-foreground/30"
+                    i === activeSlide ? "w-4 bg-primary" : "w-1.5 bg-muted-foreground/30"
                   }`}
                   onClick={() => carouselApi?.scrollTo(i)}
                   aria-label={`Go to ${s.label}`}

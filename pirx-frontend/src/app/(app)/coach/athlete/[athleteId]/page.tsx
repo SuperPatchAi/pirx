@@ -61,8 +61,8 @@ interface Readiness {
 }
 
 const trendConfig: Record<string, { icon: typeof TrendingUp; color: string }> = {
-  improving: { icon: TrendingUp, color: "text-green-500" },
-  declining: { icon: TrendingDown, color: "text-red-500" },
+  improving: { icon: TrendingUp, color: "text-primary" },
+  declining: { icon: TrendingDown, color: "text-destructive" },
   stable: { icon: Minus, color: "text-muted-foreground" },
 };
 
@@ -155,9 +155,9 @@ export default function AthleteDetailPage() {
                       : Minus;
                 const trendColor =
                   change > 0
-                    ? "text-green-500"
+                    ? "text-primary"
                     : change < 0
-                      ? "text-red-500"
+                      ? "text-destructive"
                       : "text-muted-foreground";
 
                 return (
@@ -228,7 +228,7 @@ export default function AthleteDetailPage() {
                         {d.score}/100
                       </span>
                       <span
-                        className={`text-sm font-bold tabular-nums ${d.contribution_seconds < 0 ? "text-green-500" : d.contribution_seconds > 0 ? "text-red-500" : "text-muted-foreground"}`}
+                        className={`text-sm font-bold tabular-nums ${d.contribution_seconds < 0 ? "text-primary" : d.contribution_seconds > 0 ? "text-destructive" : "text-muted-foreground"}`}
                       >
                         {d.contribution_seconds < 0 ? "" : "+"}
                         {d.contribution_seconds}s

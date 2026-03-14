@@ -22,15 +22,15 @@ interface SyncBannerProps {
 export function SyncBanner({ lastSync, syncing, onSyncNow }: SyncBannerProps) {
   const label = lastSync ? `Last synced ${formatLastSync(lastSync)}` : "Not synced yet";
   return (
-    <div className="flex items-center justify-between rounded-lg bg-secondary/40 border border-border/40 px-3 py-2">
+    <div className="flex items-center justify-between rounded-[14px] bg-secondary border border-border px-3 py-2 card-inset-deep">
       <div className="flex items-center gap-2">
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check className="h-3.5 w-3.5 text-primary" />
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <button
         onClick={onSyncNow}
         disabled={syncing}
-        className="text-xs text-green-500 flex items-center gap-1 hover:text-green-400 transition-colors disabled:opacity-50"
+        className="text-xs text-primary flex items-center gap-1 hover:text-primary/80 transition-colors disabled:opacity-50"
       >
         {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
         {syncing ? "Syncing…" : "Sync Now"}

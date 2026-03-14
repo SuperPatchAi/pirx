@@ -17,17 +17,17 @@ interface DriverStripProps {
 }
 
 const DRIVER_COLORS: Record<string, string> = {
-  aerobic_base: "bg-green-500",
-  threshold: "bg-yellow-400",
-  speed: "bg-red-400",
-  load: "bg-orange-400",
-  economy: "bg-cyan-400",
+  aerobic_base: "bg-[#2eb8a1]",
+  threshold: "bg-primary",
+  speed: "bg-destructive",
+  load: "bg-[#5f665c]",
+  economy: "bg-destructive",
 };
 
 const TREND_LABELS: Record<string, { label: string; className: string }> = {
-  improving: { label: "Confirmed", className: "text-green-500" },
+  improving: { label: "Confirmed", className: "text-primary" },
   stable: { label: "Observational", className: "text-muted-foreground" },
-  declining: { label: "Emerging", className: "text-orange-400" },
+  declining: { label: "Emerging", className: "text-[#dc9518]" },
 };
 
 export function DriverStrip({ apiData }: DriverStripProps) {
@@ -52,22 +52,22 @@ export function DriverStrip({ apiData }: DriverStripProps) {
   const netSeconds = drivers.reduce((sum, d) => sum + d.contributionSeconds, 0);
 
   return (
-    <Card className="border-border/40 card-hover">
+    <Card className="border-border card-hover">
       <CardContent className="p-5 space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <h3 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Driver Seconds
             </h3>
-            <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+            <p className="text-xs font-body text-muted-foreground mt-0.5">
               Where time is gained and lost
             </p>
           </div>
           <div className="text-right">
-            <p className={`text-2xl font-bold tabular-nums ${netSeconds < 0 ? "text-green-500" : "text-red-400"}`}>
+            <p className={`font-display text-5xl tabular-nums tracking-wide ${netSeconds < 0 ? "text-primary" : "text-destructive"}`}>
               {netSeconds < 0 ? "" : "+"}{netSeconds.toFixed(0)}s
             </p>
-            <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">Net Gained</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Net Gained</p>
           </div>
         </div>
 
@@ -81,17 +81,17 @@ export function DriverStrip({ apiData }: DriverStripProps) {
             return (
               <div key={d.name} className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{d.displayName}</span>
+                  <span className="text-xs font-medium text-foreground">{d.displayName}</span>
                   <div className="flex items-center gap-2">
                     <span className={`text-[10px] ${trend.className}`}>{trend.label}</span>
-                    <span className={`text-sm font-semibold tabular-nums ${cs < 0 ? "text-green-500" : cs > 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                    <span className={`font-mono-data text-[13px] font-bold tabular-nums ${cs < 0 ? "text-primary" : cs > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                       {cs < 0 ? "" : "+"}{cs.toFixed(1)}s
                     </span>
                   </div>
                 </div>
-                <div className="h-2 w-full rounded-full bg-secondary/50 overflow-hidden">
+                <div className="h-5 w-full rounded-xl bg-[#232522] overflow-hidden shadow-[inset_0px_1px_3px_0px_rgba(10,11,9,0.4)]">
                   <div
-                    className={`h-full rounded-full ${barColor} transition-all duration-500`}
+                    className={`h-full rounded-xl ${barColor} transition-all duration-500`}
                     style={{ width: `${barWidth}%` }}
                   />
                 </div>

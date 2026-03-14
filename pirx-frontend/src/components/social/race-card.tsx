@@ -60,14 +60,14 @@ export function RaceCard({
       <div className="flex gap-4">
         <div>
           <p className="text-xs text-zinc-400">Improvement</p>
-          <p className="text-sm font-semibold text-green-400">
+          <p className="text-sm font-semibold text-primary">
             {improvementSeconds > 0 ? "-" : "+"}
             {Math.abs(improvementSeconds)}s
           </p>
         </div>
         <div>
           <p className="text-xs text-zinc-400">21-Day Change</p>
-          <p className="text-sm font-semibold text-green-400">
+          <p className="text-sm font-semibold text-primary">
             {twentyOneDayChange > 0 ? "-" : "+"}
             {Math.abs(twentyOneDayChange)}s
           </p>

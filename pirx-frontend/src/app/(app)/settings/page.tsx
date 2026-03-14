@@ -716,7 +716,7 @@ function SettingsContent() {
             ) : subscribed ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-500" />
+                  <Check className="h-4 w-4 text-primary" />
                   <span className="text-sm">Push notifications enabled</span>
                 </div>
                 <Button

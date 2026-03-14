@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+/* Card replaced with inline styled divs for inner metric pills */
 
 interface QuickMetricsProps {
   readinessScore?: number | null;
@@ -40,23 +40,21 @@ export function QuickMetrics({ readinessScore, sessionsPerWeek, distanceKmPerWee
 
   return (
     <div className="space-y-3">
-      <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+      <h3 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
         Last 21 Days
       </h3>
       <div className="grid grid-cols-4 gap-2">
         {metrics.map((m) => (
-          <Card key={m.label} className="border-border/40">
-            <CardContent className="p-3 text-center space-y-0.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{m.label}</p>
-              <p className={`text-xl font-bold tabular-nums ${m.highlight ? "text-green-500" : ""}`}>
-                {m.value}
-                {m.unit && <span className="text-xs font-normal text-muted-foreground ml-0.5">{m.unit}</span>}
-              </p>
-              {m.subtext && (
-                <p className="text-[10px] text-muted-foreground/70">{m.subtext}</p>
-              )}
-            </CardContent>
-          </Card>
+          <div key={m.label} className="bg-secondary rounded-[14px] p-3 text-center space-y-0.5 card-inset-deep">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{m.label}</p>
+            <p className={`font-display text-3xl tracking-wide tabular-nums ${m.highlight ? "text-primary" : "text-foreground"}`}>
+              {m.value}
+              {m.unit && <span className="text-[10px] font-sans font-normal text-muted-foreground ml-0.5">{m.unit}</span>}
+            </p>
+            {m.subtext && (
+              <p className="text-[10px] text-muted-foreground">{m.subtext}</p>
+            )}
+          </div>
         ))}
       </div>
     </div>

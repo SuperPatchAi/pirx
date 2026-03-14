@@ -38,12 +38,12 @@ function getCellBg(activityType: string | undefined): string {
   switch (activityType) {
     case "easy":
     case "long_run":
-      return "bg-green-500/25";
+      return "bg-primary/25";
     case "threshold":
-      return "bg-green-500/50";
+      return "bg-primary/50";
     case "interval":
     case "race":
-      return "bg-green-500";
+      return "bg-primary";
     default:
       return "bg-secondary/50";
   }
@@ -191,7 +191,7 @@ export default function CalendarPage() {
       {/* Header */}
       <header>
         <h1 className="text-2xl font-bold tracking-tight">
-          Activity <span className="text-green-500">Calendar</span>
+          Activity <span className="text-primary">Calendar</span>
         </h1>
         <div className="mt-4 flex items-center justify-between">
           <button
@@ -230,7 +230,7 @@ export default function CalendarPage() {
         </div>
         {loading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="grid grid-cols-7 gap-1">
@@ -261,31 +261,31 @@ export default function CalendarPage() {
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardContent className="p-3 text-center space-y-0.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
               Total Km
             </p>
-            <p className="text-xl font-bold tabular-nums text-green-500">
+            <p className="text-xl font-bold tabular-nums text-primary">
               {totalKm.toFixed(1)}
               <span className="text-xs font-normal text-muted-foreground ml-0.5">km</span>
             </p>
           </CardContent>
         </Card>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardContent className="p-3 text-center space-y-0.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
               Sessions
             </p>
-            <p className="text-xl font-bold tabular-nums text-green-500">{sessions}</p>
+            <p className="text-xl font-bold tabular-nums text-primary">{sessions}</p>
           </CardContent>
         </Card>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardContent className="p-3 text-center space-y-0.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
               Avg Pace
             </p>
-            <p className="text-xl font-bold tabular-nums text-green-500">
+            <p className="text-xl font-bold tabular-nums text-primary">
               {avgPace != null ? formatPace(avgPace) : "—"}
             </p>
           </CardContent>
@@ -294,7 +294,7 @@ export default function CalendarPage() {
 
       {/* Day detail */}
       {selectedDate && (
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardContent className="p-4">
             <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
               {selectedDate.toLocaleDateString("default", {

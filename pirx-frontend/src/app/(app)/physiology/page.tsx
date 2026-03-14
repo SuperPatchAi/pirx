@@ -356,7 +356,7 @@ function ManualEntryTab() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {submitted && (
-        <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-500">
+        <div className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
           Entry saved successfully.
         </div>
       )}
@@ -508,7 +508,7 @@ function MindsetTab() {
   return (
     <div className="space-y-6">
       {submitted && (
-        <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-500">
+        <div className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
           Mindset scores saved.
         </div>
       )}

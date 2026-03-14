@@ -369,26 +369,26 @@ export default function DashboardPage() {
       </AnimatedSection>
 
       <AnimatedSection delay={0.27}>
-        <Card className="border-border/40">
+        <Card className="border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Recovery & Body</CardTitle>
+            <CardTitle className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Recovery & Body</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-3 gap-3 pt-0">
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sleep</p>
-              <p className="text-base font-semibold tabular-nums">
-                {latestSleep == null ? "—" : `${Math.round(latestSleep)}/100`}
+            <div className="bg-secondary rounded-[14px] p-3 text-center card-inset-deep">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Sleep</p>
+              <p className="font-display text-2xl tracking-wide tabular-nums text-foreground">
+                {latestSleep == null ? "—" : Math.round(latestSleep)}
               </p>
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Weight</p>
-              <p className="text-base font-semibold tabular-nums">
-                {latestWeight == null ? "—" : `${latestWeight.toFixed(1)} kg`}
+            <div className="bg-secondary rounded-[14px] p-3 text-center card-inset-deep">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Weight</p>
+              <p className="font-display text-2xl tracking-wide tabular-nums text-foreground">
+                {latestWeight == null ? "—" : latestWeight.toFixed(1)}
               </p>
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Body Fat</p>
-              <p className="text-base font-semibold tabular-nums">
+            <div className="bg-secondary rounded-[14px] p-3 text-center card-inset-deep">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Body Fat</p>
+              <p className="font-display text-2xl tracking-wide tabular-nums text-foreground">
                 {latestBodyFat == null ? "—" : `${latestBodyFat.toFixed(1)}%`}
               </p>
             </div>

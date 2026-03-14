@@ -3,7 +3,7 @@
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 
-const GREEN = "#22c55e";
+const GREEN = "#0faaea";
 
 export interface HrSparklineProps {
   data: { date: string; avg_hr: number }[] | null;
@@ -15,22 +15,22 @@ export function HrSparkline({ data, avg, max }: HrSparklineProps) {
   const hasData = data && data.length > 0;
 
   return (
-    <Card className="border-border/40">
+    <Card className="border-border">
       <CardContent className="pt-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+          <span className="text-[11px] uppercase tracking-[0.18em] font-medium text-muted-foreground">
             Heart Rate
           </span>
           {(avg != null || max != null) && (
             <span className="text-xs tabular-nums">
               {avg != null && (
-                <span className="text-green-500 font-medium">{Math.round(avg)}</span>
+                <span className="text-primary font-medium">{Math.round(avg)}</span>
               )}
-              {avg != null && max != null && " avg  "}
+              {avg != null && max != null && <span className="text-muted-foreground"> avg  </span>}
               {max != null && (
-                <span className="text-green-500 font-medium">{Math.round(max)}</span>
+                <span className="text-primary font-medium">{Math.round(max)}</span>
               )}
-              {max != null && " max"}
+              {max != null && <span className="text-muted-foreground"> max</span>}
             </span>
           )}
         </div>

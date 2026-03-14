@@ -104,19 +104,19 @@ export function ProjectionTile({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="border-border/60 bg-card overflow-hidden relative glow-green-lg">
-        <div className="absolute inset-0 bg-gradient-to-b from-green-500/6 to-transparent pointer-events-none" />
+      <Card className="border-border bg-card overflow-hidden relative glow-green-lg">
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/6 to-transparent pointer-events-none opacity-15" />
         <CardContent className="p-5 space-y-4 relative">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
               {formatEventName(event)} Projection
             </span>
             {improving ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
                 <TrendingDown className="h-3.5 w-3.5" /> Improving
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-400">
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#dc9518]">
                 <TrendingUp className="h-3.5 w-3.5" /> Trending Up
               </span>
             )}
@@ -125,12 +125,12 @@ export function ProjectionTile({
           {(modelSource || modelConfidence != null || fallbackReason) && (
             <div className="flex items-center gap-2">
               {modelSource && (
-                <span className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                   {humanizeModelSource(modelSource)}
                 </span>
               )}
               {modelConfidence != null && (
-                <span className="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                   {Math.round(modelConfidence * 100)}% confidence
                 </span>
               )}
@@ -141,29 +141,32 @@ export function ProjectionTile({
           )}
 
           <div>
-            <p className="text-5xl font-extrabold tabular-nums tracking-tight text-green-500 leading-none">
+            <p className="font-display text-7xl tabular-nums tracking-wider text-primary leading-none">
               {projectedTime}
             </p>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-xs text-muted-foreground mb-0.5">
-                {improvementSeconds > 0 ? "-" : "+"}{Math.abs(improvementSeconds).toFixed(1)}s
-              </p>
-              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">vs baseline</p>
+          <div className="flex items-center gap-4">
+            <span className="font-mono-data text-[13px] text-muted-foreground">
+              {improvementSeconds > 0 ? "-" : "+"}{Math.abs(improvementSeconds).toFixed(1)}s
+            </span>
+            <div className="w-px h-3.5 bg-[#2d302c]" />
+            <span className="font-display text-xl tracking-wide text-primary">
+              {has21DayDelta
+                ? `${twentyOneDayChange > 0 ? "−" : "+"}${Math.abs(twentyOneDayChange).toFixed(0)}s`
+                : "—"}
+            </span>
+            <span className="text-[11px] text-muted-foreground">vs baseline</span>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex-1 bg-secondary rounded-[14px] p-4 text-center card-inset-deep">
+              <p className="font-display text-[30px] tracking-wide text-foreground leading-none">{range.split("–")[0]?.trim() ?? "—"}</p>
+              <p className="text-[10px] font-medium text-muted-foreground mt-2">Best Case</p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-0.5">
-                {has21DayDelta
-                  ? `${twentyOneDayChange > 0 ? "-" : "+"}${Math.abs(twentyOneDayChange).toFixed(1)}s`
-                  : "—"}
-              </p>
-              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">21-day</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-0.5">{range}</p>
-              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">range</p>
+            <div className="flex-1 bg-secondary rounded-[14px] p-4 text-center card-inset-deep">
+              <p className="font-display text-[30px] tracking-wide text-foreground leading-none">{range.split("–")[1]?.trim() ?? "—"}</p>
+              <p className="text-[10px] font-medium text-muted-foreground mt-2">Worst Case</p>
             </div>
           </div>
 
@@ -188,7 +191,7 @@ export function ProjectionTile({
                 </div>
               ) : explainerData ? (
                 <>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
+                  <p className="text-xs font-body text-muted-foreground leading-relaxed">
                     {explainerData.narrative}
                   </p>
                   <div className="space-y-1.5">
@@ -197,7 +200,7 @@ export function ProjectionTile({
                       return (
                         <div key={d.driver_name} className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">{d.display_name}</span>
-                          <span className={`font-medium tabular-nums ${cs < 0 ? "text-green-500" : cs > 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          <span className={`font-mono-data font-bold tabular-nums ${cs < 0 ? "text-primary" : cs > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                             {cs < 0 ? "" : "+"}{cs.toFixed(1)}s
                           </span>
                         </div>

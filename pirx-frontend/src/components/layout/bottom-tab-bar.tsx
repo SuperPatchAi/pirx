@@ -17,7 +17,7 @@ export function BottomTabBar() {
   const pathname = usePathname();
 
   return (
-    <nav data-tour="tab-bar" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-card/90 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+    <nav data-tour="tab-bar" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/90 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
       <div className="flex h-14 items-center justify-around">
         {tabs.map(({ href, label, icon: Icon }) => {
           const isActive = pathname.startsWith(href);
@@ -29,11 +29,11 @@ export function BottomTabBar() {
               className={cn(
                 "flex flex-1 flex-col items-center gap-0.5 py-1 text-[10px] font-medium tracking-wide transition-colors",
                 isActive
-                  ? "text-green-500"
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Icon className={cn("h-5 w-5 transition-all", isActive && "drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]")} />
+              <Icon className={cn("h-5 w-5 transition-all", isActive && "drop-shadow-[0_0_8px_rgba(15,170,234,0.5)]")} />
               <span className="uppercase">{label}</span>
             </Link>
           );

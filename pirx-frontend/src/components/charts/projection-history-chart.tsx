@@ -41,7 +41,7 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-const GREEN = "#22c55e";
+const GREEN = "#0faaea";
 const GREEN_DIM = "rgba(34,197,94,0.15)";
 
 export function ProjectionHistoryChart({

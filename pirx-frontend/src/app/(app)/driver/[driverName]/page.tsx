@@ -25,8 +25,8 @@ const trendConfig = {
   improving: {
     icon: TrendingUp,
     label: "Improving",
-    color: "text-green-500",
-    bgColor: "bg-green-500/10",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
   },
   stable: {
     icon: Minus,
@@ -37,8 +37,8 @@ const trendConfig = {
   declining: {
     icon: TrendingDown,
     label: "Declining",
-    color: "text-red-500",
-    bgColor: "bg-red-500/10",
+    color: "text-destructive",
+    bgColor: "bg-destructive/10",
   },
 };
 
@@ -185,7 +185,7 @@ export default function DriverPage() {
                 <TrendIcon className="mr-1 h-3 w-3" />
                 {trend.label}
               </Badge>
-              <p className="text-lg font-bold tabular-nums text-green-500">
+              <p className="text-lg font-bold tabular-nums text-primary">
                 -{data.contribution}s
               </p>
               <p className="text-xs text-muted-foreground">contribution</p>
@@ -228,7 +228,7 @@ export default function DriverPage() {
               <span className="text-sm">{f.feature}</span>
               <span
                 className={`text-sm font-bold tabular-nums ${
-                  f.direction === "positive" ? "text-green-500" : "text-red-500"
+                  f.direction === "positive" ? "text-primary" : "text-destructive"
                 }`}
               >
                 {f.impact}

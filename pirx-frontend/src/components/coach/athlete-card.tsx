@@ -56,7 +56,7 @@ export function AthleteCard({
         : Minus;
   const trendColor =
     twentyOneDayChange > 0
-      ? "text-green-500"
+      ? "text-primary"
       : twentyOneDayChange < 0
         ? "text-red-500"
         : "text-muted-foreground";

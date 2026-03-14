@@ -34,7 +34,7 @@ const SLIDES: SlideData[] = [
   },
   {
     icon: Timer,
-    iconBg: "bg-green-500/20 text-green-500",
+    iconBg: "bg-primary/20 text-primary",
     title: "Your Projected Time",
     subtitle: "One number, always current",
     description:

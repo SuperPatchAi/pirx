@@ -10,9 +10,9 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 
-const EASY_COLOR = "#4b5563";
-const TEMPO_COLOR = "#22c55e";
-const LONG_COLOR = "#f97316";
+const EASY_COLOR = "#4b5049";
+const TEMPO_COLOR = "#0faaea";
+const LONG_COLOR = "#dc9518";
 
 export interface WeeklyVolumeChartProps {
   data: { day: string; easy: number; tempo: number; long: number }[] | null;
@@ -28,9 +28,9 @@ function NoData() {
 }
 
 const tooltipStyle = {
-  backgroundColor: "hsl(220 13% 10%)",
-  border: "1px solid hsl(var(--border))",
-  borderRadius: "8px",
+  backgroundColor: "#1e201d",
+  border: "1px solid #2b2d2a",
+  borderRadius: "14px",
   fontSize: "12px",
   padding: "8px 12px",
 };
@@ -38,10 +38,10 @@ const tooltipStyle = {
 export function WeeklyVolumeChart({ data, totalKm }: WeeklyVolumeChartProps) {
   if (!data || data.length === 0) {
     return (
-      <Card className="border-border/40">
+      <Card className="border-border">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+            <h3 className="text-[11px] uppercase tracking-[0.18em] font-medium text-muted-foreground">
               This Week
             </h3>
           </div>
@@ -52,15 +52,16 @@ export function WeeklyVolumeChart({ data, totalKm }: WeeklyVolumeChartProps) {
   }
 
   return (
-    <Card className="border-border/40">
+    <Card className="border-border">
       <CardContent className="pt-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+          <h3 className="text-[11px] uppercase tracking-[0.18em] font-medium text-muted-foreground">
             This Week
           </h3>
           {totalKm != null && (
-            <span className="text-2xl font-bold tabular-nums">
-              {Math.round(totalKm)} km
+            <span className="text-foreground">
+              <span className="font-display text-4xl tracking-wide">{Math.round(totalKm)}</span>
+              <span className="text-[13px] text-muted-foreground ml-1">km</span>
             </span>
           )}
         </div>
@@ -98,7 +99,7 @@ export function WeeklyVolumeChart({ data, totalKm }: WeeklyVolumeChartProps) {
                 <Cell key={`tempo-${i}`} fill={TEMPO_COLOR} />
               ))}
             </Bar>
-            <Bar dataKey="long" stackId="volume" fill={LONG_COLOR} radius={[4, 4, 0, 0]}>
+            <Bar dataKey="long" stackId="volume" fill={LONG_COLOR} radius={[14, 14, 0, 0]}>
               {data.map((_, i) => (
                 <Cell key={`long-${i}`} fill={LONG_COLOR} />
               ))}

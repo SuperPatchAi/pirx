@@ -51,9 +51,9 @@ const trendConfig: Record<
   string,
   { icon: typeof TrendingUp; color: string }
 > = {
-  improving: { icon: TrendingDown, color: "text-green-500" },
+  improving: { icon: TrendingDown, color: "text-primary" },
   stable: { icon: Minus, color: "text-muted-foreground" },
-  declining: { icon: TrendingUp, color: "text-red-500" },
+  declining: { icon: TrendingUp, color: "text-destructive" },
 };
 
 export default function EventPage() {
@@ -339,13 +339,13 @@ export default function EventPage() {
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1">
-              <TrendingDown className="h-3.5 w-3.5 text-green-500" />
-              <span className="text-sm font-medium text-green-500">
+              <TrendingDown className="h-3.5 w-3.5 text-primary" />
+              <span className="text-sm font-medium text-primary">
                 -{data.improvement}s total
               </span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-green-500">
+              <span className="text-sm font-medium text-primary">
                 -{data.change21d}s
               </span>
               <span className="text-xs text-muted-foreground">21-day</span>
@@ -390,7 +390,7 @@ export default function EventPage() {
                       <div key={d.driver_name} className="space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium">{d.display_name}</span>
-                          <span className={`text-sm font-medium tabular-nums ${d.contribution_seconds < 0 ? "text-green-500" : d.contribution_seconds > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                          <span className={`text-sm font-medium tabular-nums ${d.contribution_seconds < 0 ? "text-primary" : d.contribution_seconds > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                             {d.contribution_seconds < 0 ? "" : "+"}{d.contribution_seconds}s
                           </span>
                         </div>
@@ -494,7 +494,7 @@ export default function EventPage() {
               <div className="text-right">
                 <p className="text-lg font-bold tabular-nums">{t.time}</p>
                 {t.delta !== undefined && t.delta !== 0 && (
-                  <p className={`text-xs ${t.delta > 0 ? "text-green-500" : "text-red-500"}`}>
+                  <p className={`text-xs ${t.delta > 0 ? "text-primary" : "text-destructive"}`}>
                     {t.delta > 0 ? "-" : "+"}{Math.abs(t.delta)}s
                   </p>
                 )}

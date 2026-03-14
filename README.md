@@ -156,7 +156,7 @@ flowchart TD
 - ACWR with EWMA:
   - `acute_alpha = 2 / (acute_days + 1)`
   - `chronic_alpha = 2 / (chronic_days + 1)`
-  - `ewma_t = alpha * load_t + (1 - alpha) * ewma_(t-1)` seeded by mean of non-zero loads
+  - `ewma_t = alpha * load_t + (1 - alpha) * ewma_(t-1)` seeded by first observed value (`EWMA_0 = load_0`)
   - `acwr = acute_load / chronic_load`
   - windows: `acwr_4w=(7,28)`, `acwr_6w=(7,42)`, `acwr_8w=(7,56)`
 - Optional aggregate weighted load score:
@@ -182,6 +182,8 @@ flowchart TD
   - inverse features use `ratio = 2 - min(ratio, 2)`
   - `feature_score = clip(50 * ratio, 0, 100)`
   - `driver_score = mean(feature_scores for mapped features)`; default `50` if missing
+  - ACWR uses U-shaped normalization: `acwr_score = clip(100 * (1 - min(|acwr - 1.05| / 0.5, 1.0)), 0, 100)`
+  - NaN-valued features are excluded from scoring to prevent silent corruption
 - Driver weights:
   - `aerobic_base=0.30`, `threshold_density=0.25`, `speed_exposure=0.15`, `running_economy=0.15`, `load_consistency=0.15`
 - Weighted sum:
@@ -210,6 +212,7 @@ flowchart TD
   - `fraction_d = weighted_score_d / sum(weighted_scores)`
   - contribution for each non-final driver is rounded to 2 decimals
   - final driver receives the remainder so contributions sum exactly to `total_improvement_seconds`
+  - when all weighted driver scores are zero but total improvement is nonzero, contributions are distributed evenly across the five drivers
 
 ### 3) Baseline Estimation (`baseline_estimator.py`)
 
@@ -235,7 +238,7 @@ Tiered fallback chain for 5K baseline capability:
 - Tier 2 sustained effort:
   - distance >= 3000m
   - `hr_pct >= 0.85`
-  - estimate `equiv_5k = pace_sec_per_km * 5`
+  - Riegel-scaled to 5K-equivalent time (non-5K distances use power-law scaling rather than linear pace extrapolation)
 - Tier 3:
   - `tier3 = p10_pace * 5 * 0.96`
 - Tier 4:
@@ -273,8 +276,9 @@ Tiered fallback chain for 5K baseline capability:
 
 - Readiness score from ACWR balance, freshness, recency, physiology, consistency:
   - implementation labels: `Peak`, `Good`, `Moderate`, `Low`, `Very Low`
-- Trajectory scenarios simulate near-term outcomes.
-- Explainability generates driver-level factors used in event/performance views.
+  - when 5+ race-day outcomes exist, a trained `GradientBoostingClassifier` (100 estimators, max_depth=3, lr=0.05) replaces the heuristic weighting; 9 features (ACWR, days since last activity/threshold/long run, HRV trend, resting HR trend, sleep score, weekly load stddev, session density stability)
+- Trajectory prediction uses DTW-based block matching (14-calendar-day blocks, z-score normalized features, top-k=3 matching) with heuristic scenario multipliers as fallback when fewer than 4 blocks exist.
+- Explainability generates driver-level factors used in event/performance views (SHAP TreeExplainer when trained GB model available, heuristic fallback otherwise).
 
 #### Exact readiness calculations (`readiness_engine.py`)
 
@@ -367,8 +371,10 @@ These are not core model equations, but they materially affect output values sho
 - Zone methodology:
   - `low_intensity = z1 + z2`
   - `high_intensity = z4 + z5`
+  - `z3_pct = zone3_time / total_zone_time`
+  - if `low_intensity > 0.75` and `z3_pct < 0.05` -> `Polarized`
   - if `low_intensity > 0.75` -> `Pyramidal`
-  - if `low_intensity < 0.60` and `high_intensity > 0.25` -> `Polarized`
+  - if `high_intensity > 0.20` -> `Threshold-heavy`
   - else `Mixed`
 - Zone fallback when `hr_zones` absent:
   - classify by HR% of estimated max (`190` fallback max HR)
